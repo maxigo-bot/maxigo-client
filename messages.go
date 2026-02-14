@@ -17,7 +17,7 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, body *NewMessage
 	if chatID != 0 {
 		q.Set("chat_id", strconv.FormatInt(chatID, 10))
 	}
-	if body.DisableLinkPreview {
+	if body != nil && body.DisableLinkPreview {
 		q.Set("disable_link_preview", "true")
 	}
 
@@ -34,7 +34,7 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, body *NewMessage
 func (c *Client) SendMessageToUser(ctx context.Context, userID int64, body *NewMessageBody) (*Message, error) {
 	q := make(url.Values)
 	q.Set("user_id", strconv.FormatInt(userID, 10))
-	if body.DisableLinkPreview {
+	if body != nil && body.DisableLinkPreview {
 		q.Set("disable_link_preview", "true")
 	}
 

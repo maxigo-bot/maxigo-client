@@ -1,6 +1,41 @@
 # Changelog
 
-## [v0.1.0] - 2026-02-14
+## [v0.2.0] - 2026-02-14
+
+### Fixed
+- **Optional null handling**: `Optional[T].UnmarshalJSON` now treats JSON `null` as unset (`Set=false`) instead of `Set=true` with zero value — prevents accidental field overwrites when round-tripping API responses
+- **Nil body panic**: `SendMessage` and `SendMessageToUser` no longer panic when `body` is nil
+- **Upload goroutine leak**: `doUpload` now closes the pipe reader on all exit paths, preventing goroutine leaks on network errors
+- **Upload timeout**: `doUpload` now applies the client's default timeout when the context has no deadline, matching `do()` behavior
+- **Long polling timeout**: `GetUpdates` no longer races `http.Client.Timeout` against the server-side polling timeout — timeouts are now managed via `context` with an automatic 5s buffer on top of the server-side duration
+- **JSON serialization**: `NewMessageBody.Attachments` changed from `omitempty` to `omitzero` — empty slice `[]AttachmentRequest{}` is now serialized as `"attachments":[]` instead of being omitted, allowing inline keyboard removal
+
+### Added
+- `Attachment` interface and `MessageBody.ParseAttachments()` — type-safe parsing of response attachments via discriminator map (all 11 types: image, video, audio, file, sticker, contact, share, location, data, inline_keyboard, reply_keyboard); unknown types are skipped for forward compatibility
+- Type-safe button constructors: `NewCallbackButton`, `NewCallbackButtonWithIntent`, `NewLinkButton`, `NewRequestContactButton`, `NewRequestGeoLocationButton`, `NewChatButton`, `NewMessageButton`
+- `ErrPollDeadline` — returned when the context deadline is too short for the requested polling timeout
+- `Optional[T]`, `Some[T]()` — generic optional type with three-state JSON semantics (unset / zero value / value), replaces `*string`/`*bool` pointers in request types
+- Type aliases: `OptString`, `OptBool`, `OptInt64`
+
+### Changed
+- `NewMessageBody.Text`: `*string` → `OptString`
+- `NewMessageBody.Notify`: `*bool` → `OptBool`
+- `NewMessageBody.Format`: `*TextFormat` → `Optional[TextFormat]`
+- `BotPatch.Name`, `.FirstName`, `.Description`: `*string` → `OptString`
+- `ChatPatch.Title`, `.Pin`: `*string` → `OptString`
+- `ChatPatch.Notify`: `*bool` → `OptBool`
+- `CallbackAnswer.Notification`: `*string` → `OptString`
+- `PinMessageBody.Notify`: `*bool` → `OptBool`
+- `Button.ChatDescription`, `.StartPayload`: `*string` → `OptString`
+- `Button.UUID`: `*int64` → `OptInt64`
+- `ReplyButton.Payload`: `*string` → `OptString`
+- `AttachmentRequest.DirectUserID`: `*int64` → `OptInt64`
+- `PhotoAttachmentRequestPayload.URL`, `.Token`: `*string` → `OptString`
+- `ContactAttachmentRequestPayload.Name`, `.VCFInfo`, `.VCFPhone`: `*string` → `OptString`
+- `ContactAttachmentRequestPayload.ContactID`: `*int64` → `OptInt64`
+- `ShareAttachmentPayload.URL`, `.Token`: `*string` → `OptString`
+
+## [v0.1.1] - 2026-02-14
 
 ### Fixed
 - **Query params**: `message_ids` and `types` are now comma-separated (`style: simple`) as required by the OpenAPI schema

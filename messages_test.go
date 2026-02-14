@@ -3,7 +3,9 @@ package maxigo
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -22,7 +24,7 @@ func TestSendMessage(t *testing.T) {
 
 			var body NewMessageBody
 			readJSON(t, r, &body)
-			if body.Text == nil || *body.Text != "Hello!" {
+			if !body.Text.Set || body.Text.Value != "Hello!" {
 				t.Errorf("text = %v, want %q", body.Text, "Hello!")
 			}
 
@@ -39,7 +41,7 @@ func TestSendMessage(t *testing.T) {
 			})
 		})
 
-		msg, err := c.SendMessage(context.Background(), 100, &NewMessageBody{Text: strPtr("Hello!")})
+		msg, err := c.SendMessage(context.Background(), 100, &NewMessageBody{Text: Some("Hello!")})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -59,7 +61,7 @@ func TestSendMessageToUser(t *testing.T) {
 		})
 	})
 
-	_, err := c.SendMessageToUser(context.Background(), 42, &NewMessageBody{Text: strPtr("hi")})
+	_, err := c.SendMessageToUser(context.Background(), 42, &NewMessageBody{Text: Some("hi")})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -76,7 +78,7 @@ func TestSendMessageDisableLinkPreview(t *testing.T) {
 	})
 
 	_, err := c.SendMessage(context.Background(), 100, &NewMessageBody{
-		Text:               strPtr("https://example.com"),
+		Text:               Some("https://example.com"),
 		DisableLinkPreview: true,
 	})
 	if err != nil {
@@ -95,7 +97,7 @@ func TestEditMessage(t *testing.T) {
 		writeJSON(t, w, SimpleQueryResult{Success: true})
 	})
 
-	result, err := c.EditMessage(context.Background(), "mid-1", &NewMessageBody{Text: strPtr("edited")})
+	result, err := c.EditMessage(context.Background(), "mid-1", &NewMessageBody{Text: Some("edited")})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -207,6 +209,64 @@ func TestGetMessageByID(t *testing.T) {
 	}
 }
 
+func TestAnswerCallbackAttachments(t *testing.T) {
+	// See: https://dev.max.ru/docs-api/methods/POST/answers
+	// "attachments: AttachmentRequest[] Nullable — if empty, all attachments will be removed"
+
+	t.Run("nil attachments omitted from JSON", func(t *testing.T) {
+		// When Attachments is nil (not set), the field must be omitted
+		// so the server keeps existing attachments.
+		c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			raw := mustReadBody(t, r)
+			if strings.Contains(raw, "attachments") {
+				t.Errorf("attachments should be omitted when nil, got: %s", raw)
+			}
+			writeJSON(t, w, SimpleQueryResult{Success: true})
+		})
+
+		_, err := c.AnswerCallback(context.Background(), "cb-1", &CallbackAnswer{
+			Message: &NewMessageBody{
+				Text: Some("Keep buttons"),
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("empty attachments sent as empty array", func(t *testing.T) {
+		// When Attachments is an empty slice, the JSON must contain
+		// "attachments":[] so the server removes all attachments (e.g. inline keyboard).
+		c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			raw := mustReadBody(t, r)
+			if !strings.Contains(raw, `"attachments":[]`) {
+				t.Errorf("expected \"attachments\":[] in JSON body, got: %s", raw)
+			}
+			writeJSON(t, w, SimpleQueryResult{Success: true})
+		})
+
+		_, err := c.AnswerCallback(context.Background(), "cb-1", &CallbackAnswer{
+			Message: &NewMessageBody{
+				Text:        Some("Remove buttons"),
+				Attachments: []AttachmentRequest{},
+			},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+// mustReadBody reads and returns the raw request body. Test helper.
+func mustReadBody(t *testing.T, r *http.Request) string {
+	t.Helper()
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		t.Fatalf("failed to read body: %v", err)
+	}
+	return string(data)
+}
+
 func TestAnswerCallback(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -222,16 +282,15 @@ func TestAnswerCallback(t *testing.T) {
 
 			var answer CallbackAnswer
 			readJSON(t, r, &answer)
-			if answer.Notification == nil || *answer.Notification != "Done!" {
+			if !answer.Notification.Set || answer.Notification.Value != "Done!" {
 				t.Errorf("Notification = %v, want Done!", answer.Notification)
 			}
 
 			writeJSON(t, w, SimpleQueryResult{Success: true})
 		})
 
-		notif := "Done!"
 		result, err := c.AnswerCallback(context.Background(), "cb-1", &CallbackAnswer{
-			Notification: &notif,
+			Notification: Some("Done!"),
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

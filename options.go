@@ -25,11 +25,12 @@ func WithBaseURL(url string) Option {
 	}
 }
 
-// WithTimeout sets the HTTP client timeout. Default is 30 seconds.
-// Note: if used together with WithHTTPClient, apply WithTimeout after it,
-// otherwise WithHTTPClient will replace the client and discard the timeout.
+// WithTimeout sets the request timeout. Default is 30 seconds.
+// This timeout is applied via context to each request that has no deadline set.
+// For long-polling requests ([Client.GetUpdates]), the timeout is automatically
+// extended to accommodate the server-side polling.
 func WithTimeout(d time.Duration) Option {
 	return func(cl *Client) {
-		cl.httpClient.Timeout = d
+		cl.timeout = d
 	}
 }

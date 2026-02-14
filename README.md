@@ -62,7 +62,58 @@ fmt.Printf("Bot: %s (ID: %d)\n", bot.FirstName, bot.UserID)
 - All methods take `context.Context`
 - Structured error handling with `errors.As`
 - Full Max Bot API coverage: messages, chats, uploads, webhooks, long polling
+- Type-safe constructors for all button types and attachments
+- `Optional[T]` generics for three-state fields (unset / zero / value)
 - Testable without real API via `WithBaseURL`
+
+## Type-Safe Constructors
+
+No need to remember string constants — use constructors for buttons and attachments:
+
+**Buttons:**
+
+```go
+maxigo.NewCallbackButton("Click", "payload")                        // callback
+maxigo.NewCallbackButtonWithIntent("Yes", "yes", maxigo.IntentPositive) // callback with intent
+maxigo.NewLinkButton("Open", "https://example.com")                 // link
+maxigo.NewRequestContactButton("Share contact")                     // request contact
+maxigo.NewRequestGeoLocationButton("Send location", true)           // request geo (quick=true)
+maxigo.NewChatButton("Create chat", "Title")                        // create chat
+maxigo.NewMessageButton("Send")                                     // message from user
+```
+
+**Attachments:**
+
+```go
+maxigo.NewInlineKeyboardAttachment(buttons) // inline keyboard
+maxigo.NewPhotoAttachment(payload)          // image
+maxigo.NewVideoAttachment(payload)          // video
+maxigo.NewAudioAttachment(payload)          // audio
+maxigo.NewFileAttachment(payload)           // file
+maxigo.NewStickerAttachment(payload)        // sticker
+maxigo.NewContactAttachment(payload)        // contact card
+maxigo.NewShareAttachment(payload)          // share link
+maxigo.NewLocationAttachment(lat, lng)      // location
+```
+
+**Example — inline keyboard with contact and geo buttons:**
+
+```go
+msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
+    Text: maxigo.Some("Choose an option:"),
+    Attachments: []maxigo.AttachmentRequest{
+        maxigo.NewInlineKeyboardAttachment([][]maxigo.Button{
+            {
+                maxigo.NewRequestContactButton("Share contact"),
+                maxigo.NewRequestGeoLocationButton("Send location", false),
+            },
+            {
+                maxigo.NewCallbackButtonWithIntent("Cancel", "cancel", maxigo.IntentNegative),
+            },
+        }),
+    },
+})
+```
 
 ## API Overview
 

@@ -89,8 +89,7 @@ func TestEditChat(t *testing.T) {
 		writeJSON(t, w, Chat{ChatID: 100, Title: &title})
 	})
 
-	title := "Updated"
-	chat, err := c.EditChat(context.Background(), 100, &ChatPatch{Title: &title})
+	chat, err := c.EditChat(context.Background(), 100, &ChatPatch{Title: Some("Updated")})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

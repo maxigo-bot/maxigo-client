@@ -20,17 +20,19 @@ Go HTTP-клиент для [Max Bot API](https://dev.max.ru). Без внешн
 
 **Неидиоматичный Go** — builder-паттерн, `SCREAMING_CASE` константы, `Api` вместо `API`, нет `context.Context` в загрузках, нет функциональных опций.
 
-| Проблема                   | Официальный клиент                                   | maxigo-client                                             |
-|----------------------------|------------------------------------------------------|-----------------------------------------------------------|
-| Обработка ошибок           | `log.Println` в 30+ местах                           | Все ошибки возвращаются как `*Error` с Kind/StatusCode/Op |
-| Тестируемость              | Нужен мок `ConfigInterface` из 7 методов             | `maxigo.New("token", WithBaseURL(srv.URL))`               |
-| Зависимости                | 6 транзитивных (zerolog, yaml, env...)               | 0 — только stdlib                                         |
-| `GetChatID()` для callback | Возвращает 0                                         | Извлекаем из `Message.Recipient.ChatId`                   |
-| Типы                       | `time.Duration` для таймстампов, `int→int64` кастинг | Корректный `int64` везде                                  |
-| Загрузки файлов            | `http.Get()` без context/timeout                     | Все запросы через настроенный клиент с `context.Context`  |
-| Стиль API                  | `NewMessage().SetChat().SetText()`                   | `SendMessage(ctx, chatID, &NewMessageBody{Text: &text})`  |
-| Константы                  | `TYPING_ON`, `CALLBACK`, `POSITIVE`                  | `ActionTypingOn`, `IntentPositive`                        |
-| Конфигурация               | YAML-файлы + парсер env                              | Функциональные опции: `WithTimeout`, `WithHTTPClient`     |
+| Проблема                         | Официальный клиент                                                          | maxigo-client                                                               |
+|----------------------------------|-----------------------------------------------------------------------------|-----------------------------------------------------------------------------|
+| Обработка ошибок                 | `log.Println` в 30+ местах                                                  | Все ошибки возвращаются как `*Error` с Kind/StatusCode/Op                   |
+| Тестируемость                    | Нужен мок `ConfigInterface` из 7 методов                                    | `maxigo.New("token", WithBaseURL(srv.URL))`                                 |
+| Зависимости                      | 6 транзитивных (zerolog, yaml, env...)                                      | 0 — только stdlib                                                           |
+| `GetChatID()` для callback       | Возвращает 0                                                                | Извлекаем из `Message.Recipient.ChatId`                                     |
+| Типы                             | `time.Duration` для таймстампов, `int→int64` кастинг                        | Корректный `int64` везде                                                    |
+| Загрузки файлов                  | `http.Get()` без context/timeout                                            | Все запросы через настроенный клиент с `context.Context`                    |
+| Стиль API                        | `NewMessage().SetChat().SetText()`                                          | `SendMessage(ctx, chatID, &NewMessageBody{Text: Some("text")})`             |
+| Константы                        | `TYPING_ON`, `CALLBACK`, `POSITIVE`                                         | `ActionTypingOn`, `IntentPositive`                                          |
+| Конфигурация                     | YAML-файлы + парсер env                                                     | Функциональные опции: `WithTimeout`, `WithHTTPClient`                       |
+| Редактирование вложений          | Нет `omitempty` — `[]` всегда отправляется, молча удаляет вложения при edit | `omitzero` — `nil` = не менять, `[]` = удалить, корректная семантика        |
+| Optional-поля (`bool`, `string`) | `bool` + `omitempty` — невозможно отправить `false`/`""`                    | `Optional[T]` на дженериках — три состояния: не задано / нулевое / значение |
 
 **maxigo-client** исправляет все эти проблемы.
 
@@ -71,9 +73,8 @@ func main() {
     fmt.Printf("Бот: %s (ID: %d)\n", bot.FirstName, bot.UserID)
 
     // Отправляем сообщение
-    text := "Привет из maxigo!"
     msg, err := client.SendMessage(ctx, 123456, &maxigo.NewMessageBody{
-        Text: &text,
+        Text: maxigo.Some("Привет из maxigo!"),
     })
     if err != nil {
         log.Fatal(err)
@@ -102,35 +103,69 @@ client, err := maxigo.New("token",
 
 ```go
 // В чат
-text := "Привет!"
 msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
-    Text: &text,
+    Text: maxigo.Some("Привет!"),
 })
 
 // Конкретному пользователю
-text := "Личное сообщение"
 msg, err := client.SendMessageToUser(ctx, userID, &maxigo.NewMessageBody{
-    Text: &text,
+    Text: maxigo.Some("Личное сообщение"),
 })
 
 // С форматированием
-text := "**Жирный** и _курсив_"
-format := maxigo.FormatMarkdown
 msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
-    Text:   &text,
-    Format: &format,
+    Text:   maxigo.Some("**Жирный** и _курсив_"),
+    Format: maxigo.Some(maxigo.FormatMarkdown),
 })
 
-// С инлайн-клавиатурой (типобезопасный конструктор)
-text := "Выберите действие:"
+// С инлайн-клавиатурой (типобезопасные конструкторы кнопок)
 msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
-    Text: &text,
+    Text: maxigo.Some("Выберите действие:"),
     Attachments: []maxigo.AttachmentRequest{
         maxigo.NewInlineKeyboardAttachment([][]maxigo.Button{
             {
-                {Type: "callback", Text: "Да", Payload: "yes", Intent: maxigo.IntentPositive},
-                {Type: "callback", Text: "Нет", Payload: "no", Intent: maxigo.IntentNegative},
+                maxigo.NewCallbackButtonWithIntent("Да", "yes", maxigo.IntentPositive),
+                maxigo.NewCallbackButtonWithIntent("Нет", "no", maxigo.IntentNegative),
             },
+        }),
+    },
+})
+```
+
+### Конструкторы кнопок
+
+Библиотека предоставляет типобезопасные конструкторы для всех типов кнопок — не нужно запоминать строковые константы:
+
+```go
+// Callback — отправляет payload боту через webhook/polling
+maxigo.NewCallbackButton("Нажми", "payload")
+maxigo.NewCallbackButtonWithIntent("Подтвердить", "yes", maxigo.IntentPositive)
+
+// Ссылка — открывает URL
+maxigo.NewLinkButton("Открыть сайт", "https://example.com")
+
+// Запрос контакта — просит пользователя поделиться контактной информацией
+maxigo.NewRequestContactButton("Поделиться контактом")
+
+// Запрос геолокации — просит пользователя отправить местоположение
+// quick=true отправляет без диалога подтверждения
+maxigo.NewRequestGeoLocationButton("Отправить локацию", false)
+
+// Создание чата — создаёт новый чат, бот добавляется как админ
+maxigo.NewChatButton("Создать чат", "Название чата")
+
+// Сообщение — при нажатии текст кнопки отправляется в чат от имени пользователя
+maxigo.NewMessageButton("Записаться на приём")
+```
+
+**Пример — кнопка запроса контакта в инлайн-клавиатуре:**
+
+```go
+msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
+    Text: maxigo.Some("Поделитесь контактом:"),
+    Attachments: []maxigo.AttachmentRequest{
+        maxigo.NewInlineKeyboardAttachment([][]maxigo.Button{
+            {maxigo.NewRequestContactButton("Поделиться контактом")},
         }),
     },
 })
@@ -140,9 +175,8 @@ msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
 
 ```go
 // Редактировать сообщение
-text := "Обновлённый текст"
 result, err := client.EditMessage(ctx, "mid-123", &maxigo.NewMessageBody{
-    Text: &text,
+    Text: maxigo.Some("Обновлённый текст"),
 })
 
 // Удалить сообщение
@@ -162,9 +196,8 @@ msg, err := client.GetMessageByID(ctx, "mid-123")
 ### Ответ на callback (нажатие кнопки)
 
 ```go
-notif := "Готово!"
 result, err := client.AnswerCallback(ctx, callbackID, &maxigo.CallbackAnswer{
-    Notification: &notif,
+    Notification: maxigo.Some("Готово!"),
 })
 ```
 
@@ -180,9 +213,8 @@ list, err := client.GetChats(ctx, maxigo.GetChatsOpts{Count: 50})
 list2, err := client.GetChats(ctx, maxigo.GetChatsOpts{Count: 50, Marker: *list.Marker})
 
 // Редактировать чат
-title := "Новое название"
 chat, err := client.EditChat(ctx, chatID, &maxigo.ChatPatch{
-    Title: &title,
+    Title: maxigo.Some("Новое название"),
 })
 
 // Удалить чат
@@ -207,6 +239,50 @@ pinned, err := client.GetPinnedMessage(ctx, chatID)
 // Покинуть чат
 result, err := client.LeaveChat(ctx, chatID)
 ```
+
+## Парсинг вложений
+
+Сообщения из API содержат вложения в виде `[]json.RawMessage`. Метод `ParseAttachments()` конвертирует их в типизированные структуры:
+
+```go
+attachments, err := msg.Body.ParseAttachments()
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, att := range attachments {
+    switch a := att.(type) {
+    case *maxigo.PhotoAttachment:
+        fmt.Println("Фото URL:", a.Payload.URL)
+    case *maxigo.ContactAttachment:
+        if a.Payload.MaxInfo != nil {
+            fmt.Println("Контакт:", a.Payload.MaxInfo.FirstName)
+        }
+    case *maxigo.LocationAttachment:
+        fmt.Printf("Локация: %f, %f\n", a.Latitude, a.Longitude)
+    case *maxigo.InlineKeyboardAttachment:
+        fmt.Println("Кнопок:", len(a.Payload.Buttons))
+    }
+}
+```
+
+Поддерживаются все 11 типов вложений:
+
+| JSON `type`       | Структура Go                  |
+|-------------------|-------------------------------|
+| `image`           | `*PhotoAttachment`            |
+| `video`           | `*VideoAttachment`            |
+| `audio`           | `*AudioAttachment`            |
+| `file`            | `*FileAttachment`             |
+| `sticker`         | `*StickerAttachment`          |
+| `contact`         | `*ContactAttachment`          |
+| `share`           | `*ShareAttachment`            |
+| `location`        | `*LocationAttachment`         |
+| `data`            | `*DataAttachment`             |
+| `inline_keyboard` | `*InlineKeyboardAttachment`   |
+| `reply_keyboard`  | `*ReplyKeyboardAttachment`    |
+
+Неизвестные типы пропускаются для совместимости с будущими версиями API.
 
 ## Загрузка файлов
 

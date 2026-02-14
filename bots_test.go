@@ -79,7 +79,7 @@ func TestEditBot(t *testing.T) {
 
 			var patch BotPatch
 			readJSON(t, r, &patch)
-			if patch.FirstName == nil || *patch.FirstName != "NewName" {
+			if !patch.FirstName.Set || patch.FirstName.Value != "NewName" {
 				t.Errorf("FirstName = %v, want NewName", patch.FirstName)
 			}
 
@@ -94,8 +94,7 @@ func TestEditBot(t *testing.T) {
 			})
 		})
 
-		name := "NewName"
-		bot, err := c.EditBot(context.Background(), &BotPatch{FirstName: &name})
+		bot, err := c.EditBot(context.Background(), &BotPatch{FirstName: Some("NewName")})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

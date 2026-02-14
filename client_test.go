@@ -50,8 +50,8 @@ func TestNew(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if c.httpClient.Timeout != 5*time.Second {
-			t.Errorf("timeout = %v, want %v", c.httpClient.Timeout, 5*time.Second)
+		if c.timeout != 5*time.Second {
+			t.Errorf("timeout = %v, want %v", c.timeout, 5*time.Second)
 		}
 	})
 
@@ -60,9 +60,6 @@ func TestNew(t *testing.T) {
 		c, err := New("token", WithHTTPClient(custom))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
-		}
-		if c.httpClient.Timeout != 99*time.Second {
-			t.Errorf("timeout = %v, want %v", c.httpClient.Timeout, 99*time.Second)
 		}
 		if c.httpClient == custom {
 			t.Error("httpClient should be a copy, not the original")

@@ -27,6 +27,7 @@ type Client struct {
 	httpClient *http.Client
 	baseURL    string
 	token      string
+	timeout    time.Duration
 }
 
 // New creates a new Max Bot API client with the given token.
@@ -42,9 +43,10 @@ func New(token string, opts ...Option) (*Client, error) {
 	}
 
 	c := &Client{
-		httpClient: &http.Client{Timeout: defaultTimeout},
+		httpClient: &http.Client{},
 		baseURL:    defaultBaseURL,
 		token:      token,
+		timeout:    defaultTimeout,
 	}
 
 	for _, opt := range opts {
@@ -56,7 +58,14 @@ func New(token string, opts ...Option) (*Client, error) {
 
 // do performs an HTTP request and decodes the JSON response into result.
 // If result is nil, the response body is discarded.
+// If the context has no deadline, the client's default timeout is applied.
 func (c *Client) do(ctx context.Context, op, method, path string, query url.Values, body any, result any) error {
+	if _, ok := ctx.Deadline(); !ok && c.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+
 	u, err := c.buildURL(path, query)
 	if err != nil {
 		return networkError(op, err)
@@ -114,7 +123,14 @@ func (c *Client) do(ctx context.Context, op, method, path string, query url.Valu
 
 // doUpload performs a multipart file upload to the given URL.
 func (c *Client) doUpload(ctx context.Context, op, uploadURL, filename string, reader io.Reader) ([]byte, error) {
+	if _, ok := ctx.Deadline(); !ok && c.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+
 	pr, pw := io.Pipe()
+	defer pr.Close() // ensure cleanup on all exit paths
 	writer := multipart.NewWriter(pw)
 
 	go func() {
@@ -132,7 +148,6 @@ func (c *Client) doUpload(ctx context.Context, op, uploadURL, filename string, r
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, pr)
 	if err != nil {
-		_ = pr.Close()
 		return nil, networkError(op, fmt.Errorf("create upload request: %w", err))
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())

@@ -8,6 +8,10 @@ import (
 // ErrEmptyToken is returned when an empty token is passed to New.
 var ErrEmptyToken = errors.New("bot token is empty")
 
+// ErrPollDeadline is returned by [Client.GetUpdates] when the context deadline
+// is too short for the requested long-polling timeout.
+var ErrPollDeadline = errors.New("context deadline is shorter than polling timeout + buffer; increase the deadline or reduce GetUpdatesOpts.Timeout")
+
 // ErrorKind classifies the category of an error returned by the client.
 type ErrorKind int
 

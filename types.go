@@ -1,6 +1,9 @@
 package maxigo
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // ChatType represents the type of chat.
 type ChatType string
@@ -131,9 +134,9 @@ type BotCommand struct {
 // BotPatch represents the request body for PATCH /me.
 type BotPatch struct {
 	// Deprecated: use FirstName instead. Will be removed in a future API version.
-	Name        *string      `json:"name,omitempty"`
-	FirstName   *string      `json:"first_name,omitempty"`
-	Description *string      `json:"description,omitempty"`
+	Name        OptString    `json:"name,omitzero"`
+	FirstName   OptString    `json:"first_name,omitzero"`
+	Description OptString    `json:"description,omitzero"`
 	Commands    []BotCommand `json:"commands,omitempty"`
 	Photo       *PhotoAttachmentRequestPayload `json:"photo,omitempty"`
 }
@@ -172,9 +175,9 @@ type ChatList struct {
 // ChatPatch represents the request body for PATCH /chats/{chatId}.
 type ChatPatch struct {
 	Icon   *PhotoAttachmentRequestPayload `json:"icon,omitempty"`
-	Title  *string                        `json:"title,omitempty"`
-	Pin    *string                        `json:"pin,omitempty"`
-	Notify *bool                          `json:"notify,omitempty"`
+	Title  OptString                      `json:"title,omitzero"`
+	Pin    OptString                      `json:"pin,omitzero"`
+	Notify OptBool                        `json:"notify,omitzero"`
 }
 
 // ChatMember represents a member of a chat.
@@ -238,6 +241,59 @@ type MessageBody struct {
 	Markup      []MarkupElement   `json:"markup,omitempty"`
 }
 
+// attachmentFactories maps JSON "type" values to factory functions
+// that return a pointer to the corresponding Go struct.
+var attachmentFactories = map[string]func() Attachment{
+	"image":          func() Attachment { return new(PhotoAttachment) },
+	"video":          func() Attachment { return new(VideoAttachment) },
+	"audio":          func() Attachment { return new(AudioAttachment) },
+	"file":           func() Attachment { return new(FileAttachment) },
+	"sticker":        func() Attachment { return new(StickerAttachment) },
+	"contact":        func() Attachment { return new(ContactAttachment) },
+	"share":          func() Attachment { return new(ShareAttachment) },
+	"location":       func() Attachment { return new(LocationAttachment) },
+	"data":           func() Attachment { return new(DataAttachment) },
+	"inline_keyboard": func() Attachment { return new(InlineKeyboardAttachment) },
+	"reply_keyboard": func() Attachment { return new(ReplyKeyboardAttachment) },
+}
+
+// ParseAttachments unmarshals raw JSON attachments into typed structs.
+// Each returned element is a pointer to one of the attachment types
+// (e.g. *PhotoAttachment, *ContactAttachment). Use a type switch to
+// inspect individual attachments.
+//
+// Unknown attachment types are silently skipped for forward compatibility.
+// Returns nil, nil when there are no attachments.
+func (mb *MessageBody) ParseAttachments() ([]Attachment, error) {
+	if len(mb.Attachments) == 0 {
+		return nil, nil
+	}
+
+	var header struct {
+		Type string `json:"type"`
+	}
+
+	result := make([]Attachment, 0, len(mb.Attachments))
+	for _, raw := range mb.Attachments {
+		if err := json.Unmarshal(raw, &header); err != nil {
+			return nil, fmt.Errorf("parse attachment type: %w", err)
+		}
+
+		factory, ok := attachmentFactories[header.Type]
+		if !ok {
+			continue // unknown type — skip for forward compat
+		}
+
+		att := factory()
+		if err := json.Unmarshal(raw, att); err != nil {
+			return nil, fmt.Errorf("parse %s attachment: %w", header.Type, err)
+		}
+		result = append(result, att)
+	}
+
+	return result, nil
+}
+
 // LinkedMessage represents a forwarded or replied message.
 type LinkedMessage struct {
 	Type    MessageLinkType `json:"type"`
@@ -253,15 +309,14 @@ type MessageList struct {
 
 // NewMessageBody represents the body for sending or editing a message.
 //
-// Text is a pointer to distinguish between "not set" (nil, field omitted)
-// and "set to empty string" (clears message text). When editing a message,
-// nil means "keep existing text", while a pointer to "" means "clear text".
+// Use [Some] to set optional fields. Unset fields are omitted from JSON,
+// which tells the server to keep the existing value when editing a message.
 type NewMessageBody struct {
-	Text        *string            `json:"text"`
-	Attachments []AttachmentRequest `json:"attachments,omitempty"`
-	Link        *NewMessageLink    `json:"link,omitempty"`
-	Notify      *bool              `json:"notify,omitempty"`
-	Format      *TextFormat        `json:"format,omitempty"`
+	Text        OptString            `json:"text,omitzero"`
+	Attachments []AttachmentRequest  `json:"attachments,omitzero"`
+	Link        *NewMessageLink     `json:"link,omitempty"`
+	Notify      OptBool             `json:"notify,omitzero"`
+	Format      Optional[TextFormat] `json:"format,omitzero"`
 
 	// DisableLinkPreview prevents the server from generating link previews.
 	// Sent as a query parameter, not in the JSON body.
@@ -281,9 +336,22 @@ type sendMessageResult struct {
 
 // Attachment types
 
+// Attachment is implemented by all attachment response types.
+// Use [MessageBody.ParseAttachments] to convert raw JSON attachments
+// into typed structs, then type-switch on the result.
+type Attachment interface {
+	// GetType returns the attachment type string (e.g. "image", "video", "contact").
+	GetType() string
+}
+
 // AttachmentType is embedded in all attachment responses.
 type AttachmentType struct {
 	Type string `json:"type"`
+}
+
+// GetType implements the [Attachment] interface.
+func (a AttachmentType) GetType() string {
+	return a.Type
 }
 
 // PhotoAttachmentPayload represents the payload of a photo attachment.
@@ -369,8 +437,8 @@ type ContactAttachment struct {
 
 // ShareAttachmentPayload represents the payload of a share attachment.
 type ShareAttachmentPayload struct {
-	URL   *string `json:"url,omitempty"`
-	Token *string `json:"token,omitempty"`
+	URL   OptString `json:"url,omitzero"`
+	Token OptString `json:"token,omitzero"`
 }
 
 // ShareAttachment represents a link share attachment in a message.
@@ -410,25 +478,62 @@ type InlineKeyboardAttachment struct {
 // Use the Type field to determine the button kind: "callback", "link",
 // "request_contact", "request_geo_location", "chat", "message".
 type Button struct {
-	Type             string  `json:"type"`
-	Text             string  `json:"text"`
-	Payload          string  `json:"payload,omitempty"`
-	URL              string  `json:"url,omitempty"`
-	Intent           Intent  `json:"intent,omitempty"`
-	Quick            bool    `json:"quick,omitempty"`
-	ChatTitle        string  `json:"chat_title,omitempty"`
-	ChatDescription  *string `json:"chat_description,omitempty"`
-	StartPayload     *string `json:"start_payload,omitempty"`
-	UUID             *int64  `json:"uuid,omitempty"`
+	Type             string    `json:"type"`
+	Text             string    `json:"text"`
+	Payload          string    `json:"payload,omitempty"`
+	URL              string    `json:"url,omitempty"`
+	Intent           Intent    `json:"intent,omitempty"`
+	Quick            bool      `json:"quick,omitempty"`
+	ChatTitle        string    `json:"chat_title,omitempty"`
+	ChatDescription  OptString `json:"chat_description,omitzero"`
+	StartPayload     OptString `json:"start_payload,omitzero"`
+	UUID             OptInt64  `json:"uuid,omitzero"`
+}
+
+// NewCallbackButton creates a callback button that sends payload to the bot.
+func NewCallbackButton(text, payload string) Button {
+	return Button{Type: "callback", Text: text, Payload: payload}
+}
+
+// NewCallbackButtonWithIntent creates a callback button with a visual intent.
+func NewCallbackButtonWithIntent(text, payload string, intent Intent) Button {
+	return Button{Type: "callback", Text: text, Payload: payload, Intent: intent}
+}
+
+// NewLinkButton creates a button that opens a URL when pressed.
+func NewLinkButton(text, url string) Button {
+	return Button{Type: "link", Text: text, URL: url}
+}
+
+// NewRequestContactButton creates a button that requests the user's contact information.
+func NewRequestContactButton(text string) Button {
+	return Button{Type: "request_contact", Text: text}
+}
+
+// NewRequestGeoLocationButton creates a button that requests the user's location.
+// If quick is true, the location is sent without asking user's confirmation.
+func NewRequestGeoLocationButton(text string, quick bool) Button {
+	return Button{Type: "request_geo_location", Text: text, Quick: quick}
+}
+
+// NewChatButton creates a button that creates a new chat when pressed.
+// The bot will be added as administrator and the message author will own the chat.
+func NewChatButton(text, chatTitle string) Button {
+	return Button{Type: "chat", Text: text, ChatTitle: chatTitle}
+}
+
+// NewMessageButton creates a button that sends a message from the user in chat.
+func NewMessageButton(text string) Button {
+	return Button{Type: "message", Text: text}
 }
 
 // ReplyButton represents a button in a reply keyboard.
 type ReplyButton struct {
-	Type    string  `json:"type,omitempty"`
-	Text    string  `json:"text"`
-	Payload *string `json:"payload,omitempty"`
-	Intent  Intent  `json:"intent,omitempty"`
-	Quick   bool    `json:"quick,omitempty"`
+	Type    string    `json:"type,omitempty"`
+	Text    string    `json:"text"`
+	Payload OptString `json:"payload,omitzero"`
+	Intent  Intent    `json:"intent,omitempty"`
+	Quick   bool      `json:"quick,omitempty"`
 }
 
 // ReplyKeyboardAttachment represents a reply keyboard in a message.
@@ -457,7 +562,7 @@ type AttachmentRequest struct {
 	// Reply keyboard
 	Buttons      [][]ReplyButton `json:"buttons,omitempty"`
 	Direct       bool            `json:"direct,omitempty"`
-	DirectUserID *int64          `json:"direct_user_id,omitempty"`
+	DirectUserID OptInt64         `json:"direct_user_id,omitzero"`
 }
 
 // NewPhotoAttachment creates an image attachment request.
@@ -508,8 +613,8 @@ func NewLocationAttachment(latitude, longitude float64) AttachmentRequest {
 // PhotoAttachmentRequestPayload is the payload for attaching an image.
 // Fields are mutually exclusive.
 type PhotoAttachmentRequestPayload struct {
-	URL    *string               `json:"url,omitempty"`
-	Token  *string               `json:"token,omitempty"`
+	URL    OptString             `json:"url,omitzero"`
+	Token  OptString             `json:"token,omitzero"`
 	Photos map[string]PhotoToken `json:"photos,omitempty"`
 }
 
@@ -530,10 +635,10 @@ type UploadedInfo struct {
 
 // ContactAttachmentRequestPayload is the payload for attaching a contact.
 type ContactAttachmentRequestPayload struct {
-	Name      *string `json:"name"`
-	ContactID *int64  `json:"contact_id,omitempty"`
-	VCFInfo   *string `json:"vcf_info,omitempty"`
-	VCFPhone  *string `json:"vcf_phone,omitempty"`
+	Name      OptString `json:"name,omitzero"`
+	ContactID OptInt64  `json:"contact_id,omitzero"`
+	VCFInfo   OptString `json:"vcf_info,omitzero"`
+	VCFPhone  OptString `json:"vcf_phone,omitzero"`
 }
 
 // StickerAttachmentRequestPayload is the payload for attaching a sticker.
@@ -562,7 +667,7 @@ type Callback struct {
 // CallbackAnswer represents the response to a callback.
 type CallbackAnswer struct {
 	Message      *NewMessageBody `json:"message,omitempty"`
-	Notification *string         `json:"notification,omitempty"`
+	Notification OptString       `json:"notification,omitzero"`
 }
 
 // Subscription represents a WebHook subscription.
@@ -610,8 +715,8 @@ type ActionRequestBody struct {
 
 // PinMessageBody is the request body for PUT /chats/{chatId}/pin.
 type PinMessageBody struct {
-	MessageID string `json:"message_id"`
-	Notify    *bool  `json:"notify,omitempty"`
+	MessageID string  `json:"message_id"`
+	Notify    OptBool `json:"notify,omitzero"`
 }
 
 // GetPinnedMessageResult is the response from GET /chats/{chatId}/pin.

@@ -28,9 +28,11 @@ The official [`max-bot-api-client-go`](https://github.com/max-messenger/max-bot-
 | `GetChatID()` for callbacks  | Returns 0                                          | Extract from `Message.Recipient.ChatId`                       |
 | Types                        | `time.Duration` for timestamps, `int→int64` casts  | Correct `int64` everywhere                                    |
 | Uploads                      | `http.Get()` without context/timeout               | All requests through configured client with `context.Context` |
-| API style                    | `NewMessage().SetChat().SetText()`                 | `SendMessage(ctx, chatID, &NewMessageBody{Text: &text})`     |
+| API style                    | `NewMessage().SetChat().SetText()`                 | `SendMessage(ctx, chatID, &NewMessageBody{Text: Some("text")})` |
 | Constants                    | `TYPING_ON`, `CALLBACK`, `POSITIVE`                | `ActionTypingOn`, `IntentPositive`                            |
 | Configuration                | YAML files + env parser                            | Functional options: `WithTimeout`, `WithHTTPClient`           |
+| Edit message attachments     | No `omitempty` — `[]` always sent, silently deletes attachments on edit | `omitzero` — `nil` = keep, `[]` = delete, correct semantics  |
+| Optional fields (`bool`, `string`) | `bool` + `omitempty` — can't send `false`/`""` | `Optional[T]` generics — three states: unset / zero / value  |
 
 **maxigo-client** fixes all of these.
 
@@ -71,9 +73,8 @@ func main() {
     fmt.Printf("Bot: %s (ID: %d)\n", bot.FirstName, bot.UserID)
 
     // Send a message
-    text := "Hello from maxigo!"
     msg, err := client.SendMessage(ctx, 123456, &maxigo.NewMessageBody{
-        Text: &text,
+        Text: maxigo.Some("Hello from maxigo!"),
     })
     if err != nil {
         log.Fatal(err)
@@ -102,56 +103,47 @@ client, err := maxigo.New("token",
 
 ```go
 // To a chat
-text := "Hello!"
 msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
-    Text: &text,
+    Text: maxigo.Some("Hello!"),
 })
 
 // To a specific user
-text = "Direct message"
 msg, err := client.SendMessageToUser(ctx, userID, &maxigo.NewMessageBody{
-    Text: &text,
+    Text: maxigo.Some("Direct message"),
 })
 
 // With formatting
-text = "**Bold** and _italic_"
-format := maxigo.FormatMarkdown
 msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
-    Text:   &text,
-    Format: &format,
+    Text:   maxigo.Some("**Bold** and _italic_"),
+    Format: maxigo.Some(maxigo.FormatMarkdown),
 })
 
-// With inline keyboard (type-safe constructor)
-text = "Choose an action:"
+// With inline keyboard using button constructors
 msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
-    Text: &text,
+    Text: maxigo.Some("Choose an action:"),
     Attachments: []maxigo.AttachmentRequest{
         maxigo.NewInlineKeyboardAttachment([][]maxigo.Button{
             {
-                {Type: "callback", Text: "Yes", Payload: "yes", Intent: maxigo.IntentPositive},
-                {Type: "callback", Text: "No", Payload: "no", Intent: maxigo.IntentNegative},
+                maxigo.NewCallbackButtonWithIntent("Yes", "yes", maxigo.IntentPositive),
+                maxigo.NewCallbackButtonWithIntent("No", "no", maxigo.IntentNegative),
             },
         }),
     },
 })
 
 // With link button
-text = "Visit our website:"
 msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
-    Text: &text,
+    Text: maxigo.Some("Visit our website:"),
     Attachments: []maxigo.AttachmentRequest{
         maxigo.NewInlineKeyboardAttachment([][]maxigo.Button{
-            {
-                {Type: "link", Text: "Open", URL: "https://example.com"},
-            },
+            {maxigo.NewLinkButton("Open", "https://example.com")},
         }),
     },
 })
 
 // Reply to a message
-text = "This is a reply"
 msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
-    Text: &text,
+    Text: maxigo.Some("This is a reply"),
     Link: &maxigo.NewMessageLink{
         Type: maxigo.LinkReply,
         MID:  "mid-original",
@@ -167,13 +159,51 @@ msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
 })
 ```
 
+### Button Constructors
+
+The library provides type-safe constructors for all button types, so you don't have to remember string constants:
+
+```go
+// Callback button — sends payload to bot via webhook/polling
+maxigo.NewCallbackButton("Click me", "payload")
+maxigo.NewCallbackButtonWithIntent("Confirm", "yes", maxigo.IntentPositive)
+
+// Link button — opens a URL
+maxigo.NewLinkButton("Open site", "https://example.com")
+
+// Request contact — asks user to share their contact info
+maxigo.NewRequestContactButton("Share contact")
+
+// Request geo location — asks user to share their location
+// quick=true sends location without confirmation dialog
+maxigo.NewRequestGeoLocationButton("Send location", false)
+
+// Chat button — creates a new chat with the bot as admin
+maxigo.NewChatButton("Create chat", "Chat Title")
+
+// Message button — button text is sent as a message from the user in chat
+maxigo.NewMessageButton("Book appointment")
+```
+
+**Example — request contact button in inline keyboard:**
+
+```go
+msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
+    Text: maxigo.Some("Please share your contact:"),
+    Attachments: []maxigo.AttachmentRequest{
+        maxigo.NewInlineKeyboardAttachment([][]maxigo.Button{
+            {maxigo.NewRequestContactButton("Share contact")},
+        }),
+    },
+})
+```
+
 ### Editing and Deleting
 
 ```go
 // Edit a message
-text := "Updated text"
 result, err := client.EditMessage(ctx, "mid-123", &maxigo.NewMessageBody{
-    Text: &text,
+    Text: maxigo.Some("Updated text"),
 })
 
 // Delete a message
@@ -195,16 +225,14 @@ msg, err := client.GetMessageByID(ctx, "mid-123")
 When a user presses an inline button:
 
 ```go
-notif := "Done!"
 result, err := client.AnswerCallback(ctx, callbackID, &maxigo.CallbackAnswer{
-    Notification: &notif,
+    Notification: maxigo.Some("Done!"),
 })
 
 // Or replace the message:
-text := "Button was pressed!"
 result, err := client.AnswerCallback(ctx, callbackID, &maxigo.CallbackAnswer{
     Message: &maxigo.NewMessageBody{
-        Text: &text,
+        Text: maxigo.Some("Button was pressed!"),
     },
 })
 ```
@@ -224,9 +252,8 @@ list, err := client.GetChats(ctx, maxigo.GetChatsOpts{Count: 50})
 list2, err := client.GetChats(ctx, maxigo.GetChatsOpts{Count: 50, Marker: *list.Marker})
 
 // Edit a chat
-title := "New Title"
 chat, err := client.EditChat(ctx, chatID, &maxigo.ChatPatch{
-    Title: &title,
+    Title: maxigo.Some("New Title"),
 })
 
 // Delete a chat
@@ -265,6 +292,50 @@ result, err := client.LeaveChat(ctx, chatID)
 | `ActionSendAudio`  | Bot is sending audio     |
 | `ActionSendFile`   | Bot is sending a file    |
 | `ActionMarkSeen`   | Mark messages as read    |
+
+## Parsing Attachments
+
+Messages from the API contain attachments as `[]json.RawMessage`. Use `ParseAttachments()` to convert them into typed structs:
+
+```go
+attachments, err := msg.Body.ParseAttachments()
+if err != nil {
+    log.Fatal(err)
+}
+
+for _, att := range attachments {
+    switch a := att.(type) {
+    case *maxigo.PhotoAttachment:
+        fmt.Println("Photo URL:", a.Payload.URL)
+    case *maxigo.ContactAttachment:
+        if a.Payload.MaxInfo != nil {
+            fmt.Println("Contact:", a.Payload.MaxInfo.FirstName)
+        }
+    case *maxigo.LocationAttachment:
+        fmt.Printf("Location: %f, %f\n", a.Latitude, a.Longitude)
+    case *maxigo.InlineKeyboardAttachment:
+        fmt.Println("Keyboard buttons:", len(a.Payload.Buttons))
+    }
+}
+```
+
+All 11 attachment types are supported:
+
+| JSON `type`       | Go struct                     |
+|-------------------|-------------------------------|
+| `image`           | `*PhotoAttachment`            |
+| `video`           | `*VideoAttachment`            |
+| `audio`           | `*AudioAttachment`            |
+| `file`            | `*FileAttachment`             |
+| `sticker`         | `*StickerAttachment`          |
+| `contact`         | `*ContactAttachment`          |
+| `share`           | `*ShareAttachment`            |
+| `location`        | `*LocationAttachment`         |
+| `data`            | `*DataAttachment`             |
+| `inline_keyboard` | `*InlineKeyboardAttachment`   |
+| `reply_keyboard`  | `*ReplyKeyboardAttachment`    |
+
+Unknown types are silently skipped for forward compatibility.
 
 ## File Uploads
 
@@ -483,10 +554,10 @@ func TestMyBot(t *testing.T) {
 
 ## Ecosystem
 
-| Package                          | Description                                  |
-|----------------------------------|----------------------------------------------|
+| Package                               | Description                                  |
+|---------------------------------------|----------------------------------------------|
 | `github.com/maxigo-bot/maxigo-client` | HTTP client (this package)                   |
-| `github.com/maxigo/maxigo`       | Bot framework with router/middleware/context |
+| `github.com/maxigo/maxigo`            | Bot framework with router/middleware/context |
 
 > *Both packages are currently in development and not yet published.*
 
