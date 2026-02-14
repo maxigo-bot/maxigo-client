@@ -1,0 +1,6 @@
+.idea/
+coverage.out
+.DS_Store
+*.exe
+.env
+vendor/
