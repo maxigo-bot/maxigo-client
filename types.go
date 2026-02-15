@@ -81,12 +81,17 @@ const (
 	UpdateMessageEdited      UpdateType = "message_edited"
 	UpdateMessageRemoved     UpdateType = "message_removed"
 	UpdateBotStarted         UpdateType = "bot_started"
+	UpdateBotStopped         UpdateType = "bot_stopped"
 	UpdateBotAdded           UpdateType = "bot_added"
 	UpdateBotRemoved         UpdateType = "bot_removed"
 	UpdateUserAdded          UpdateType = "user_added"
 	UpdateUserRemoved        UpdateType = "user_removed"
 	UpdateChatTitleChanged   UpdateType = "chat_title_changed"
 	UpdateMessageChatCreated UpdateType = "message_chat_created"
+	UpdateDialogMuted        UpdateType = "dialog_muted"
+	UpdateDialogUnmuted      UpdateType = "dialog_unmuted"
+	UpdateDialogCleared      UpdateType = "dialog_cleared"
+	UpdateDialogRemoved      UpdateType = "dialog_removed"
 )
 
 // ChatAdminPermission represents a permission granted to a chat admin.
@@ -101,27 +106,38 @@ const (
 	PermWrite            ChatAdminPermission = "write"
 )
 
-// User represents a Max user.
+// User represents a Max user or bot.
 type User struct {
-	UserID           int64  `json:"user_id"`
-	FirstName        string `json:"first_name"`
-	LastName         *string `json:"last_name,omitempty"`
-	Username         *string `json:"username,omitempty"`
-	IsBot            bool   `json:"is_bot"`
-	LastActivityTime int64  `json:"last_activity_time"`
+	// Unique identifier of the user or bot.
+	UserID int64 `json:"user_id"`
+	// Display name of the user or bot.
+	FirstName string `json:"first_name"`
+	// Display last name. Not returned for bots.
+	LastName *string `json:"last_name,omitempty"`
+	// Bot username or unique public name. May be null for users.
+	Username *string `json:"username,omitempty"`
+	// True if this is a bot.
+	IsBot bool `json:"is_bot"`
+	// Last activity time in MAX (Unix time in milliseconds).
+	// May be absent if the user disabled online status in settings.
+	LastActivityTime int64 `json:"last_activity_time"`
 }
 
 // UserWithPhoto extends User with avatar and description.
 type UserWithPhoto struct {
 	User
-	Description   *string `json:"description,omitempty"`
-	AvatarURL     string  `json:"avatar_url,omitempty"`
-	FullAvatarURL string  `json:"full_avatar_url,omitempty"`
+	// User or bot description (up to 16000 characters).
+	Description *string `json:"description,omitempty"`
+	// Small avatar URL.
+	AvatarURL string `json:"avatar_url,omitempty"`
+	// Full-size avatar URL.
+	FullAvatarURL string `json:"full_avatar_url,omitempty"`
 }
 
 // BotInfo represents the bot's info returned by GET /me.
 type BotInfo struct {
 	UserWithPhoto
+	// Commands supported by the bot (up to 32).
 	Commands []BotCommand `json:"commands,omitempty"`
 }
 
@@ -148,22 +164,38 @@ type Image struct {
 
 // Chat represents a Max chat.
 type Chat struct {
-	ChatID            int64          `json:"chat_id"`
-	Type              ChatType       `json:"type"`
-	Status            ChatStatus     `json:"status"`
-	Title             *string        `json:"title"`
-	Icon              *Image         `json:"icon"`
-	LastEventTime     int64          `json:"last_event_time"`
-	ParticipantsCount int            `json:"participants_count"`
-	OwnerID           *int64         `json:"owner_id,omitempty"`
-	Participants      map[string]int64 `json:"participants,omitempty"`
-	IsPublic          bool           `json:"is_public"`
-	Link              *string        `json:"link,omitempty"`
-	Description       *string        `json:"description"`
-	DialogWithUser    *UserWithPhoto `json:"dialog_with_user,omitempty"`
-	MessagesCount     *int           `json:"messages_count,omitempty"`
-	ChatMessageID     *string        `json:"chat_message_id,omitempty"`
-	PinnedMessage     *Message       `json:"pinned_message,omitempty"`
+	// Chat identifier.
+	ChatID int64 `json:"chat_id"`
+	// Chat type: "chat" (group), "dialog" (direct), or "channel".
+	Type ChatType `json:"type"`
+	// Bot's status in the chat: "active", "removed", "left", "closed".
+	Status ChatStatus `json:"status"`
+	// Display title. May be null for dialogs.
+	Title *string `json:"title"`
+	// Chat icon.
+	Icon *Image `json:"icon"`
+	// Last event time in the chat (Unix time).
+	LastEventTime int64 `json:"last_event_time"`
+	// Number of participants. Always 2 for dialogs.
+	ParticipantsCount int `json:"participants_count"`
+	// Chat owner ID.
+	OwnerID *int64 `json:"owner_id,omitempty"`
+	// Participants with last activity time. May be null for chat lists.
+	Participants map[string]int64 `json:"participants,omitempty"`
+	// Whether the chat is publicly accessible (always false for dialogs).
+	IsPublic bool `json:"is_public"`
+	// Chat invite link.
+	Link *string `json:"link,omitempty"`
+	// Chat description.
+	Description *string `json:"description"`
+	// User info for dialog chats (type "dialog" only).
+	DialogWithUser *UserWithPhoto `json:"dialog_with_user,omitempty"`
+	// Message count. Only for group chats and channels, not dialogs.
+	MessagesCount *int `json:"messages_count,omitempty"`
+	// ID of the message containing the button that initiated this chat.
+	ChatMessageID *string `json:"chat_message_id,omitempty"`
+	// Pinned message. Only returned when requesting a specific chat.
+	PinnedMessage *Message `json:"pinned_message,omitempty"`
 }
 
 // ChatList represents a paginated list of chats.
@@ -183,12 +215,18 @@ type ChatPatch struct {
 // ChatMember represents a member of a chat.
 type ChatMember struct {
 	UserWithPhoto
-	LastAccessTime int64                 `json:"last_access_time"`
-	IsOwner        bool                  `json:"is_owner"`
-	IsAdmin        bool                  `json:"is_admin"`
-	JoinTime       int64                 `json:"join_time"`
-	Permissions    []ChatAdminPermission `json:"permissions"`
-	Alias          *string               `json:"alias"`
+	// Last activity time in the chat. May be stale for superchats.
+	LastAccessTime int64 `json:"last_access_time"`
+	// Whether the user is the chat owner.
+	IsOwner bool `json:"is_owner"`
+	// Whether the user is a chat administrator.
+	IsAdmin bool `json:"is_admin"`
+	// Time when the user joined the chat (Unix time).
+	JoinTime int64 `json:"join_time"`
+	// Admin permissions. Null if the member is not an admin.
+	Permissions []ChatAdminPermission `json:"permissions"`
+	// Custom admin title shown in chat.
+	Alias *string `json:"alias"`
 }
 
 // ChatMembersList represents a paginated list of chat members.
@@ -223,13 +261,20 @@ type MessageStat struct {
 
 // Message represents a message in a chat.
 type Message struct {
-	Sender    *User          `json:"sender,omitempty"`
-	Recipient Recipient      `json:"recipient"`
-	Timestamp int64          `json:"timestamp"`
-	Link      *LinkedMessage `json:"link,omitempty"`
-	Body      MessageBody    `json:"body"`
-	Stat      *MessageStat   `json:"stat,omitempty"`
-	URL       *string        `json:"url,omitempty"`
+	// User who sent the message.
+	Sender *User `json:"sender,omitempty"`
+	// Recipient — can be a user or a chat.
+	Recipient Recipient `json:"recipient"`
+	// Message creation time (Unix time).
+	Timestamp int64 `json:"timestamp"`
+	// Forwarded or replied-to message.
+	Link *LinkedMessage `json:"link,omitempty"`
+	// Message content: text and attachments.
+	Body MessageBody `json:"body"`
+	// Message statistics.
+	Stat *MessageStat `json:"stat,omitempty"`
+	// Public link to a channel post. Absent for dialogs and group chats.
+	URL *string `json:"url,omitempty"`
 }
 
 // MessageBody represents the body of a message.
@@ -312,11 +357,16 @@ type MessageList struct {
 // Use [Some] to set optional fields. Unset fields are omitted from JSON,
 // which tells the server to keep the existing value when editing a message.
 type NewMessageBody struct {
-	Text        OptString            `json:"text,omitzero"`
-	Attachments []AttachmentRequest  `json:"attachments,omitzero"`
-	Link        *NewMessageLink     `json:"link,omitempty"`
-	Notify      OptBool             `json:"notify,omitzero"`
-	Format      Optional[TextFormat] `json:"format,omitzero"`
+	// Message text (up to 4000 characters).
+	Text OptString `json:"text,omitzero"`
+	// Message attachments. If empty, all existing attachments will be removed.
+	Attachments []AttachmentRequest `json:"attachments,omitzero"`
+	// Link to another message (for reply or forward).
+	Link *NewMessageLink `json:"link,omitempty"`
+	// If false, chat members will not be notified (default true).
+	Notify OptBool `json:"notify,omitzero"`
+	// Text formatting mode: "markdown" or "html".
+	Format Optional[TextFormat] `json:"format,omitzero"`
 
 	// DisableLinkPreview prevents the server from generating link previews.
 	// Sent as a query parameter, not in the JSON body.
@@ -476,7 +526,7 @@ type InlineKeyboardAttachment struct {
 
 // Button represents a button in an inline keyboard.
 // Use the Type field to determine the button kind: "callback", "link",
-// "request_contact", "request_geo_location", "chat", "message".
+// "request_contact", "request_geo_location", "chat", "message", "open_app".
 type Button struct {
 	Type             string    `json:"type"`
 	Text             string    `json:"text"`
@@ -488,6 +538,7 @@ type Button struct {
 	ChatDescription  OptString `json:"chat_description,omitzero"`
 	StartPayload     OptString `json:"start_payload,omitzero"`
 	UUID             OptInt64  `json:"uuid,omitzero"`
+	WebApp           string    `json:"web_app,omitempty"`
 }
 
 // NewCallbackButton creates a callback button that sends payload to the bot.
@@ -525,6 +576,12 @@ func NewChatButton(text, chatTitle string) Button {
 // NewMessageButton creates a button that sends a message from the user in chat.
 func NewMessageButton(text string) Button {
 	return Button{Type: "message", Text: text}
+}
+
+// NewOpenAppButton creates a button that opens a mini app inside the messenger.
+// The webApp parameter is the bot username whose mini app to launch.
+func NewOpenAppButton(text, webApp string) Button {
+	return Button{Type: "open_app", Text: text, WebApp: webApp}
 }
 
 // ReplyButton represents a button in a reply keyboard.
@@ -749,14 +806,18 @@ type VideoAttachmentDetails struct {
 
 // Update is the base for all update events.
 type Update struct {
+	// Discriminator that determines the update type.
 	UpdateType UpdateType `json:"update_type"`
-	Timestamp  int64      `json:"timestamp"`
+	// Unix time when the event occurred.
+	Timestamp int64 `json:"timestamp"`
 }
 
 // MessageCreatedUpdate is received when a new message is created.
 type MessageCreatedUpdate struct {
 	Update
-	Message    Message `json:"message"`
+	// The newly created message.
+	Message Message `json:"message"`
+	// User's current locale (IETF BCP 47). Only available in dialogs.
 	UserLocale *string `json:"user_locale,omitempty"`
 }
 
@@ -839,6 +900,41 @@ type MessageChatCreatedUpdate struct {
 	Chat         Chat    `json:"chat"`
 	MessageID    string  `json:"message_id"`
 	StartPayload *string `json:"start_payload,omitempty"`
+}
+
+// BotStoppedUpdate is received when a user stops the bot.
+type BotStoppedUpdate struct {
+	Update
+	ChatID int64 `json:"chat_id"`
+	User   User  `json:"user"`
+}
+
+// DialogMutedUpdate is received when a user mutes the dialog with the bot.
+type DialogMutedUpdate struct {
+	Update
+	ChatID int64 `json:"chat_id"`
+	User   User  `json:"user"`
+}
+
+// DialogUnmutedUpdate is received when a user unmutes the dialog with the bot.
+type DialogUnmutedUpdate struct {
+	Update
+	ChatID int64 `json:"chat_id"`
+	User   User  `json:"user"`
+}
+
+// DialogClearedUpdate is received when a user clears the dialog history.
+type DialogClearedUpdate struct {
+	Update
+	ChatID int64 `json:"chat_id"`
+	User   User  `json:"user"`
+}
+
+// DialogRemovedUpdate is received when a user removes the dialog with the bot.
+type DialogRemovedUpdate struct {
+	Update
+	ChatID int64 `json:"chat_id"`
+	User   User  `json:"user"`
 }
 
 // UpdateList is the response from GET /updates.

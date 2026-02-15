@@ -35,24 +35,28 @@ go get github.com/maxigo-bot/maxigo-client
 ## Quick Start
 
 ```go
-import (
-"context"
-"fmt"
-"log"
+package main
 
-maxigo "github.com/maxigo-bot/maxigo-client"
+import (
+	"context"
+	"fmt"
+	"log"
+
+	maxigo "github.com/maxigo-bot/maxigo-client"
 )
 
-client, err := maxigo.New("YOUR_BOT_TOKEN")
-if err != nil {
-log.Fatal(err)
-}
+func main() {
+	client, err := maxigo.New("YOUR_BOT_TOKEN")
+	if err != nil {
+		log.Fatal(err)
+	}
 
-bot, err := client.GetBot(context.Background())
-if err != nil {
-log.Fatal(err)
+	bot, err := client.GetBot(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Bot: %s (ID: %d)\n", bot.FirstName, bot.UserID)
 }
-fmt.Printf("Bot: %s (ID: %d)\n", bot.FirstName, bot.UserID)
 ```
 
 
@@ -80,6 +84,7 @@ maxigo.NewRequestContactButton("Share contact")                     // request c
 maxigo.NewRequestGeoLocationButton("Send location", true)           // request geo (quick=true)
 maxigo.NewChatButton("Create chat", "Title")                        // create chat
 maxigo.NewMessageButton("Send")                                     // message from user
+maxigo.NewOpenAppButton("Open WebApp", "bot_username")               // open mini-app
 ```
 
 **Attachments:**

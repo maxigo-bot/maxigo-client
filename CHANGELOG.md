@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.2.2] - 2026-02-15
+
+### Added
+- **Button type `open_app`**: `NewOpenAppButton(text, webAppURL)` constructor and `Button.WebApp` field for launching mini-apps inside the messenger
+- **5 new update types**: `BotStoppedUpdate`, `DialogMutedUpdate`, `DialogUnmutedUpdate`, `DialogClearedUpdate`, `DialogRemovedUpdate` — with constants, Go structs, and JSON round-trip tests
+
 ## [v0.2.1] - 2026-02-15
 
 ### Fixed

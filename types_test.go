@@ -93,6 +93,19 @@ func TestButtonConstructors(t *testing.T) {
 			t.Errorf("Text = %q, want %q", b.Text, "Send")
 		}
 	})
+
+	t.Run("NewOpenAppButton", func(t *testing.T) {
+		b := NewOpenAppButton("Open App", "https://example.com/app")
+		if b.Type != "open_app" {
+			t.Errorf("Type = %q, want %q", b.Type, "open_app")
+		}
+		if b.Text != "Open App" {
+			t.Errorf("Text = %q, want %q", b.Text, "Open App")
+		}
+		if b.WebApp != "https://example.com/app" {
+			t.Errorf("WebApp = %q, want %q", b.WebApp, "https://example.com/app")
+		}
+	})
 }
 
 func TestNewPhotoAttachment(t *testing.T) {

@@ -156,6 +156,9 @@ maxigo.NewChatButton("Создать чат", "Название чата")
 
 // Сообщение — при нажатии текст кнопки отправляется в чат от имени пользователя
 maxigo.NewMessageButton("Записаться на приём")
+
+// Мини-приложение — открывает мини-приложение внутри мессенджера
+maxigo.NewOpenAppButton("Открыть WebApp", "bot_username")
 ```
 
 **Пример — кнопка запроса контакта в инлайн-клавиатуре:**
@@ -383,6 +386,11 @@ for {
 | `UpdateUserRemoved`        | `UserRemovedUpdate`        | Пользователь удалён из чата |
 | `UpdateChatTitleChanged`   | `ChatTitleChangedUpdate`   | Название чата изменено      |
 | `UpdateMessageChatCreated` | `MessageChatCreatedUpdate` | Чат создан через кнопку     |
+| `UpdateBotStopped`         | `BotStoppedUpdate`         | Пользователь остановил бота |
+| `UpdateDialogMuted`        | `DialogMutedUpdate`        | Диалог замьючен             |
+| `UpdateDialogUnmuted`      | `DialogUnmutedUpdate`      | Диалог размьючен            |
+| `UpdateDialogCleared`      | `DialogClearedUpdate`      | История диалога очищена     |
+| `UpdateDialogRemoved`      | `DialogRemovedUpdate`      | Диалог удалён               |
 
 ## Обработка ошибок
 

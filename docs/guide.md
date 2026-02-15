@@ -183,6 +183,9 @@ maxigo.NewChatButton("Create chat", "Chat Title")
 
 // Message button — button text is sent as a message from the user in chat
 maxigo.NewMessageButton("Book appointment")
+
+// Open app button — opens a mini-app inside the messenger
+maxigo.NewOpenAppButton("Open WebApp", "bot_username")
 ```
 
 **Example — request contact button in inline keyboard:**
@@ -462,6 +465,11 @@ for {
 | `UpdateUserRemoved`          | `UserRemovedUpdate`          | User removed from chat   |
 | `UpdateChatTitleChanged`     | `ChatTitleChangedUpdate`     | Chat title changed       |
 | `UpdateMessageChatCreated`   | `MessageChatCreatedUpdate`   | Chat created via button  |
+| `UpdateBotStopped`           | `BotStoppedUpdate`           | User stopped the bot     |
+| `UpdateDialogMuted`          | `DialogMutedUpdate`          | User muted dialog        |
+| `UpdateDialogUnmuted`        | `DialogUnmutedUpdate`        | User unmuted dialog      |
+| `UpdateDialogCleared`        | `DialogClearedUpdate`        | User cleared dialog      |
+| `UpdateDialogRemoved`        | `DialogRemovedUpdate`        | User removed dialog      |
 
 ## Error Handling
 

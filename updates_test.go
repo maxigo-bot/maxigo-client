@@ -156,6 +156,137 @@ func TestGetUpdates(t *testing.T) {
 	})
 }
 
+func TestNewUpdateTypes(t *testing.T) {
+	tests := []struct {
+		name       string
+		updateType UpdateType
+		raw        json.RawMessage
+		verify     func(t *testing.T, raw json.RawMessage)
+	}{
+		{
+			name:       "bot_stopped",
+			updateType: UpdateBotStopped,
+			raw: mustMarshal(BotStoppedUpdate{
+				Update: Update{UpdateType: UpdateBotStopped, Timestamp: 1000},
+				ChatID: 42,
+				User:   User{UserID: 1, FirstName: "Alice"},
+			}),
+			verify: func(t *testing.T, raw json.RawMessage) {
+				var u BotStoppedUpdate
+				if err := json.Unmarshal(raw, &u); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				if u.UpdateType != UpdateBotStopped {
+					t.Errorf("UpdateType = %q, want %q", u.UpdateType, UpdateBotStopped)
+				}
+				if u.ChatID != 42 {
+					t.Errorf("ChatID = %d, want 42", u.ChatID)
+				}
+				if u.User.UserID != 1 {
+					t.Errorf("User.UserID = %d, want 1", u.User.UserID)
+				}
+			},
+		},
+		{
+			name:       "dialog_muted",
+			updateType: UpdateDialogMuted,
+			raw: mustMarshal(DialogMutedUpdate{
+				Update: Update{UpdateType: UpdateDialogMuted, Timestamp: 2000},
+				ChatID: 100,
+				User:   User{UserID: 2, FirstName: "Bob"},
+			}),
+			verify: func(t *testing.T, raw json.RawMessage) {
+				var u DialogMutedUpdate
+				if err := json.Unmarshal(raw, &u); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				if u.UpdateType != UpdateDialogMuted {
+					t.Errorf("UpdateType = %q, want %q", u.UpdateType, UpdateDialogMuted)
+				}
+				if u.ChatID != 100 {
+					t.Errorf("ChatID = %d, want 100", u.ChatID)
+				}
+			},
+		},
+		{
+			name:       "dialog_unmuted",
+			updateType: UpdateDialogUnmuted,
+			raw: mustMarshal(DialogUnmutedUpdate{
+				Update: Update{UpdateType: UpdateDialogUnmuted, Timestamp: 3000},
+				ChatID: 100,
+				User:   User{UserID: 2, FirstName: "Bob"},
+			}),
+			verify: func(t *testing.T, raw json.RawMessage) {
+				var u DialogUnmutedUpdate
+				if err := json.Unmarshal(raw, &u); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				if u.UpdateType != UpdateDialogUnmuted {
+					t.Errorf("UpdateType = %q, want %q", u.UpdateType, UpdateDialogUnmuted)
+				}
+			},
+		},
+		{
+			name:       "dialog_cleared",
+			updateType: UpdateDialogCleared,
+			raw: mustMarshal(DialogClearedUpdate{
+				Update: Update{UpdateType: UpdateDialogCleared, Timestamp: 4000},
+				ChatID: 200,
+				User:   User{UserID: 3, FirstName: "Carol"},
+			}),
+			verify: func(t *testing.T, raw json.RawMessage) {
+				var u DialogClearedUpdate
+				if err := json.Unmarshal(raw, &u); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				if u.UpdateType != UpdateDialogCleared {
+					t.Errorf("UpdateType = %q, want %q", u.UpdateType, UpdateDialogCleared)
+				}
+				if u.ChatID != 200 {
+					t.Errorf("ChatID = %d, want 200", u.ChatID)
+				}
+			},
+		},
+		{
+			name:       "dialog_removed",
+			updateType: UpdateDialogRemoved,
+			raw: mustMarshal(DialogRemovedUpdate{
+				Update: Update{UpdateType: UpdateDialogRemoved, Timestamp: 5000},
+				ChatID: 300,
+				User:   User{UserID: 4, FirstName: "Dave"},
+			}),
+			verify: func(t *testing.T, raw json.RawMessage) {
+				var u DialogRemovedUpdate
+				if err := json.Unmarshal(raw, &u); err != nil {
+					t.Fatalf("unmarshal: %v", err)
+				}
+				if u.UpdateType != UpdateDialogRemoved {
+					t.Errorf("UpdateType = %q, want %q", u.UpdateType, UpdateDialogRemoved)
+				}
+				if u.User.FirstName != "Dave" {
+					t.Errorf("User.FirstName = %q, want %q", u.User.FirstName, "Dave")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Verify round-trip: marshal → unmarshal produces correct update_type
+			var header struct {
+				UpdateType UpdateType `json:"update_type"`
+			}
+			if err := json.Unmarshal(tt.raw, &header); err != nil {
+				t.Fatalf("unmarshal header: %v", err)
+			}
+			if header.UpdateType != tt.updateType {
+				t.Errorf("update_type = %q, want %q", header.UpdateType, tt.updateType)
+			}
+			tt.verify(t, tt.raw)
+		})
+	}
+}
+
 func mustMarshal(v any) json.RawMessage {
 	data, err := json.Marshal(v)
 	if err != nil {
