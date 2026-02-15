@@ -129,24 +129,21 @@ func (c *Client) doUpload(ctx context.Context, op, uploadURL, filename string, r
 		defer cancel()
 	}
 
-	pr, pw := io.Pipe()
-	defer pr.Close() // ensure cleanup on all exit paths
-	writer := multipart.NewWriter(pw)
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
 
-	go func() {
-		part, err := writer.CreateFormFile("data", filename)
-		if err != nil {
-			pw.CloseWithError(err)
-			return
-		}
-		if _, err := io.Copy(part, reader); err != nil {
-			pw.CloseWithError(err)
-			return
-		}
-		pw.CloseWithError(writer.Close())
-	}()
+	part, err := writer.CreateFormFile("data", filename)
+	if err != nil {
+		return nil, networkError(op, fmt.Errorf("create form file: %w", err))
+	}
+	if _, err := io.Copy(part, reader); err != nil {
+		return nil, networkError(op, fmt.Errorf("copy file data: %w", err))
+	}
+	if err := writer.Close(); err != nil {
+		return nil, networkError(op, fmt.Errorf("close multipart writer: %w", err))
+	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, pr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, &buf)
 	if err != nil {
 		return nil, networkError(op, fmt.Errorf("create upload request: %w", err))
 	}

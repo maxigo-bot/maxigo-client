@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.2.1] - 2026-02-15
+
+### Fixed
+- **Upload Content-Length**: `doUpload` now buffers multipart body in memory instead of streaming via `io.Pipe` — the Max Bot API requires a `Content-Length` header, which was missing with pipe-based streaming (HTTP 406: "File size is unknown")
+
 ## [v0.2.0] - 2026-02-14
 
 ### Fixed
