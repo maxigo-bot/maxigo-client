@@ -1,6 +1,13 @@
 # maxigo-client
 
-  Idiomatic Go HTTP client for [Max Bot API](https://dev.max.ru) (OpenAPI schema v0.0.10). Zero external dependencies.
+[![Go Reference](https://pkg.go.dev/badge/github.com/maxigo-bot/maxigo-client.svg)](https://pkg.go.dev/github.com/maxigo-bot/maxigo-client)
+[![Go Report Card](https://goreportcard.com/badge/github.com/maxigo-bot/maxigo-client)](https://goreportcard.com/report/github.com/maxigo-bot/maxigo-client)
+[![CI](https://github.com/maxigo-bot/maxigo-client/actions/workflows/ci.yml/badge.svg)](https://github.com/maxigo-bot/maxigo-client/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/maxigo-bot/maxigo-client/branch/main/graph/badge.svg)](https://codecov.io/gh/maxigo-bot/maxigo-client)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/maxigo-bot/maxigo-client)](https://github.com/maxigo-bot/maxigo-client)
+
+Idiomatic Go HTTP client for [Max Bot API](https://dev.max.ru) (OpenAPI schema v0.0.10). Zero external dependencies.
 
 ## Why This Project?
 
