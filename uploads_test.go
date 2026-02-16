@@ -2,6 +2,7 @@ package maxigo
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -95,6 +96,85 @@ func TestUploadPhoto(t *testing.T) {
 	}
 }
 
+func TestUploadPhotoGetURLError(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		writeError(t, w, http.StatusForbidden, `{"code":"forbidden","message":"access denied"}`)
+	})
+
+	_, err := c.UploadPhoto(context.Background(), "test.jpg", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrAPI {
+		t.Errorf("Kind = %v, want ErrAPI", e.Kind)
+	}
+	if e.Op != "GetUploadURL" {
+		t.Errorf("Op = %q, want GetUploadURL", e.Op)
+	}
+}
+
+func TestUploadPhotoUploadError(t *testing.T) {
+	var requestCount atomic.Int32
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		count := requestCount.Add(1)
+		if count == 1 {
+			writeJSON(t, w, UploadEndpoint{
+				URL: "http://" + r.Host + "/do-upload",
+			})
+			return
+		}
+		writeError(t, w, http.StatusInternalServerError, "upload failed")
+	})
+
+	_, err := c.UploadPhoto(context.Background(), "test.jpg", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrAPI {
+		t.Errorf("Kind = %v, want ErrAPI", e.Kind)
+	}
+}
+
+func TestUploadPhotoUnmarshalError(t *testing.T) {
+	var requestCount atomic.Int32
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		count := requestCount.Add(1)
+		if count == 1 {
+			writeJSON(t, w, UploadEndpoint{
+				URL: "http://" + r.Host + "/do-upload",
+			})
+			return
+		}
+		_, _ = w.Write([]byte(`{invalid json`))
+	})
+
+	_, err := c.UploadPhoto(context.Background(), "test.jpg", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrDecode {
+		t.Errorf("Kind = %v, want ErrDecode", e.Kind)
+	}
+	if e.Op != "UploadPhoto" {
+		t.Errorf("Op = %q, want UploadPhoto", e.Op)
+	}
+}
+
 func TestUploadMedia(t *testing.T) {
 	var requestCount atomic.Int32
 	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -114,5 +194,84 @@ func TestUploadMedia(t *testing.T) {
 	}
 	if result.Token != "video-token-456" {
 		t.Errorf("Token = %q, want %q", result.Token, "video-token-456")
+	}
+}
+
+func TestUploadMediaGetURLError(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		writeError(t, w, http.StatusForbidden, `{"code":"forbidden","message":"access denied"}`)
+	})
+
+	_, err := c.UploadMedia(context.Background(), UploadVideo, "test.mp4", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrAPI {
+		t.Errorf("Kind = %v, want ErrAPI", e.Kind)
+	}
+	if e.Op != "GetUploadURL" {
+		t.Errorf("Op = %q, want GetUploadURL", e.Op)
+	}
+}
+
+func TestUploadMediaUploadError(t *testing.T) {
+	var requestCount atomic.Int32
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		count := requestCount.Add(1)
+		if count == 1 {
+			writeJSON(t, w, UploadEndpoint{
+				URL: "http://" + r.Host + "/do-upload",
+			})
+			return
+		}
+		writeError(t, w, http.StatusInternalServerError, "upload failed")
+	})
+
+	_, err := c.UploadMedia(context.Background(), UploadVideo, "test.mp4", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrAPI {
+		t.Errorf("Kind = %v, want ErrAPI", e.Kind)
+	}
+}
+
+func TestUploadMediaUnmarshalError(t *testing.T) {
+	var requestCount atomic.Int32
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		count := requestCount.Add(1)
+		if count == 1 {
+			writeJSON(t, w, UploadEndpoint{
+				URL: "http://" + r.Host + "/do-upload",
+			})
+			return
+		}
+		_, _ = w.Write([]byte(`{invalid json`))
+	})
+
+	_, err := c.UploadMedia(context.Background(), UploadVideo, "test.mp4", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrDecode {
+		t.Errorf("Kind = %v, want ErrDecode", e.Kind)
+	}
+	if e.Op != "UploadMedia" {
+		t.Errorf("Op = %q, want UploadMedia", e.Op)
 	}
 }

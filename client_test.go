@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -290,6 +291,129 @@ func TestDoNilResult(t *testing.T) {
 	err := c.do(context.Background(), "TestOp", http.MethodDelete, "/test", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestIsTimeout(t *testing.T) {
+	t.Run("true for timeout error", func(t *testing.T) {
+		if !isTimeout(&testTimeoutError{timeout: true}) {
+			t.Error("isTimeout should return true")
+		}
+	})
+
+	t.Run("false for non-timeout error", func(t *testing.T) {
+		if isTimeout(&testTimeoutError{timeout: false}) {
+			t.Error("isTimeout should return false")
+		}
+	})
+
+	t.Run("false for regular error", func(t *testing.T) {
+		if isTimeout(errors.New("some error")) {
+			t.Error("isTimeout should return false for regular error")
+		}
+	})
+}
+
+type testTimeoutError struct {
+	timeout bool
+}
+
+func (e *testTimeoutError) Error() string { return "test timeout" }
+func (e *testTimeoutError) Timeout() bool { return e.timeout }
+
+func TestDoMarshalError(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("request should not be sent")
+	})
+
+	// func() cannot be marshaled to JSON
+	err := c.do(context.Background(), "TestOp", http.MethodPost, "/test", nil, func() {}, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrDecode {
+		t.Errorf("Kind = %v, want ErrDecode", e.Kind)
+	}
+	if e.Op != "TestOp" {
+		t.Errorf("Op = %q, want TestOp", e.Op)
+	}
+}
+
+func TestDoHTTPClientTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(time.Second)
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := New("test-token",
+		WithBaseURL(srv.URL),
+		WithHTTPClient(&http.Client{Timeout: 5 * time.Millisecond}),
+		WithTimeout(0),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	err = c.do(context.Background(), "TestOp", http.MethodGet, "/test", nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrTimeout {
+		t.Errorf("Kind = %v, want ErrTimeout", e.Kind)
+	}
+}
+
+func TestDoUploadTimeout(t *testing.T) {
+	c, srv := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("request should not reach server")
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := c.doUpload(ctx, "TestUpload", srv.URL+"/upload", "test.txt", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrTimeout {
+		t.Errorf("Kind = %v, want ErrTimeout", e.Kind)
+	}
+}
+
+func TestDoUploadNon200(t *testing.T) {
+	c, srv := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		writeError(t, w, http.StatusInternalServerError, "upload failed")
+	})
+
+	_, err := c.doUpload(context.Background(), "TestUpload", srv.URL+"/upload", "test.txt", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrAPI {
+		t.Errorf("Kind = %v, want ErrAPI", e.Kind)
+	}
+	if e.StatusCode != http.StatusInternalServerError {
+		t.Errorf("StatusCode = %d, want 500", e.StatusCode)
 	}
 }
 

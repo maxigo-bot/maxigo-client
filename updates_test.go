@@ -3,8 +3,10 @@ package maxigo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestGetUpdates(t *testing.T) {
@@ -154,6 +156,43 @@ func TestGetUpdates(t *testing.T) {
 			t.Errorf("Payload = %q, want %q", callback.Callback.Payload, "action")
 		}
 	})
+}
+
+func TestGetUpdatesPollDeadline(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("request should not be sent")
+	})
+
+	// Deadline shorter than polling timeout (30s) + buffer (5s)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	_, err := c.GetUpdates(ctx, GetUpdatesOpts{})
+	if !errors.Is(err, ErrPollDeadline) {
+		t.Errorf("err = %v, want ErrPollDeadline", err)
+	}
+}
+
+func TestGetUpdatesAPIError(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		writeError(t, w, http.StatusUnauthorized, `{"code":"verify.token","message":"Invalid access_token"}`)
+	})
+
+	_, err := c.GetUpdates(context.Background(), GetUpdatesOpts{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrAPI {
+		t.Errorf("Kind = %v, want ErrAPI", e.Kind)
+	}
+	if e.Op != "GetUpdates" {
+		t.Errorf("Op = %q, want GetUpdates", e.Op)
+	}
 }
 
 func TestNewUpdateTypes(t *testing.T) {
