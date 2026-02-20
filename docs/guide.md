@@ -562,12 +562,10 @@ func TestMyBot(t *testing.T) {
 
 ## Ecosystem
 
-| Package                               | Description                                  |
-|---------------------------------------|----------------------------------------------|
-| `github.com/maxigo-bot/maxigo-client` | HTTP client (this package)                   |
-| `github.com/maxigo/maxigo`            | Bot framework with router/middleware/context |
-
-> *Both packages are currently in development and not yet published.*
+| Package | Description |
+|---------|-------------|
+| [maxigo-client](https://github.com/maxigo-bot/maxigo-client) | Idiomatic Go HTTP client for Max Bot API (zero external deps) |
+| [maxigo-bot](https://github.com/maxigo-bot/maxigo-bot) | Bot framework with router, middleware, and context |
 
 ## License
 

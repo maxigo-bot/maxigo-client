@@ -439,12 +439,10 @@ if err != nil {
 
 ## Экосистема
 
-```
-github.com/maxigo-bot/maxigo-client  — HTTP-клиент (этот пакет)
-github.com/maxigo/maxigo         — фреймворк для ботов с роутером/middleware/контекстом
-```
-
-> *Оба пакета находятся в разработке и ещё не опубликованы.*
+| Пакет | Описание |
+|-------|----------|
+| [maxigo-client](https://github.com/maxigo-bot/maxigo-client) | Идиоматичный Go HTTP-клиент для Max Bot API (без внешних зависимостей) |
+| [maxigo-bot](https://github.com/maxigo-bot/maxigo-bot) | Фреймворк для ботов с роутером, middleware и контекстом |
 
 ## Лицензия
 
