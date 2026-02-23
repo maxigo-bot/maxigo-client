@@ -3,6 +3,7 @@ package maxigo
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // ChatType represents the type of chat.
@@ -477,6 +478,23 @@ type StickerAttachment struct {
 type ContactAttachmentPayload struct {
 	VCFInfo *string `json:"vcf_info,omitempty"`
 	MaxInfo *User   `json:"max_info,omitempty"`
+}
+
+// Phone extracts the phone number from VCFInfo (vCard TEL field).
+// Returns an empty string if VCFInfo is nil or contains no TEL field.
+func (p *ContactAttachmentPayload) Phone() string {
+	if p.VCFInfo == nil {
+		return ""
+	}
+	for _, line := range strings.Split(*p.VCFInfo, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.HasPrefix(strings.ToUpper(line), "TEL") {
+			if idx := strings.LastIndex(line, ":"); idx >= 0 {
+				return strings.TrimSpace(line[idx+1:])
+			}
+		}
+	}
+	return ""
 }
 
 // ContactAttachment represents a contact attachment in a message.

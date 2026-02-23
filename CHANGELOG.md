@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.3.0] - 2026-02-23
+
+### Added
+- `ContactAttachmentPayload.Phone()` — extracts phone number from VCFInfo (vCard TEL field)
+
 ## [v0.2.2] - 2026-02-15
 
 ### Added

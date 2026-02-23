@@ -547,3 +547,69 @@ func TestParseAttachments(t *testing.T) {
 		}
 	})
 }
+
+func TestContactAttachmentPayload_Phone(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload ContactAttachmentPayload
+		want    string
+	}{
+		{
+			name:    "nil VCFInfo",
+			payload: ContactAttachmentPayload{},
+			want:    "",
+		},
+		{
+			name: "standard vCard with TEL;TYPE=cell",
+			payload: ContactAttachmentPayload{
+				VCFInfo: strPtr("BEGIN:VCARD\nVERSION:3.0\nTEL;TYPE=cell:79001234567\nFN:John\nEND:VCARD"),
+			},
+			want: "79001234567",
+		},
+		{
+			name: "plain TEL field",
+			payload: ContactAttachmentPayload{
+				VCFInfo: strPtr("BEGIN:VCARD\nTEL:+79001234567\nEND:VCARD"),
+			},
+			want: "+79001234567",
+		},
+		{
+			name: "TEL with multiple type params",
+			payload: ContactAttachmentPayload{
+				VCFInfo: strPtr("BEGIN:VCARD\nTEL;TYPE=work;TYPE=voice:+74951234567\nEND:VCARD"),
+			},
+			want: "+74951234567",
+		},
+		{
+			name: "no TEL field",
+			payload: ContactAttachmentPayload{
+				VCFInfo: strPtr("BEGIN:VCARD\nFN:John\nEND:VCARD"),
+			},
+			want: "",
+		},
+		{
+			name: "vCard with \\r\\n line endings",
+			payload: ContactAttachmentPayload{
+				VCFInfo: strPtr("BEGIN:VCARD\r\nTEL;TYPE=cell:79991234567\r\nEND:VCARD"),
+			},
+			want: "79991234567",
+		},
+		{
+			name: "lowercase tel field",
+			payload: ContactAttachmentPayload{
+				VCFInfo: strPtr("BEGIN:VCARD\ntel;type=cell:79991234567\nEND:VCARD"),
+			},
+			want: "79991234567",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.payload.Phone()
+			if got != tt.want {
+				t.Errorf("Phone() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+}
