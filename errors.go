@@ -24,6 +24,9 @@ const (
 	ErrTimeout
 	// ErrDecode indicates a JSON marshal or unmarshal failure.
 	ErrDecode
+	// ErrFetch indicates a failure when downloading from an external URL
+	// (used by UploadPhotoFromURL and UploadMediaFromURL).
+	ErrFetch
 )
 
 // String returns a human-readable name for the error kind.
@@ -37,6 +40,8 @@ func (k ErrorKind) String() string {
 		return "timeout"
 	case ErrDecode:
 		return "decode"
+	case ErrFetch:
+		return "fetch"
 	default:
 		return "unknown"
 	}
@@ -70,7 +75,7 @@ type Error struct {
 
 // Error returns a formatted error string including the operation, kind, and details.
 func (e *Error) Error() string {
-	if e.Kind == ErrAPI {
+	if e.Kind == ErrAPI || e.Kind == ErrFetch {
 		return fmt.Sprintf("%s: %s error %d: %s", e.Op, e.Kind, e.StatusCode, e.Message)
 	}
 	if e.Message != "" {
@@ -123,5 +128,14 @@ func decodeError(op string, err error) *Error {
 		Message: err.Error(),
 		Op:      op,
 		Err:     err,
+	}
+}
+
+func fetchError(op string, statusCode int, message string) *Error {
+	return &Error{
+		Kind:       ErrFetch,
+		StatusCode: statusCode,
+		Message:    message,
+		Op:         op,
 	}
 }

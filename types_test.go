@@ -548,6 +548,49 @@ func TestParseAttachments(t *testing.T) {
 	})
 }
 
+func TestChatAdminPermissionJSON(t *testing.T) {
+	allPerms := []ChatAdminPermission{
+		PermReadAllMessages,
+		PermAddRemoveMembers,
+		PermAddAdmins,
+		PermChangeChatInfo,
+		PermPinMessage,
+		PermWrite,
+		PermCanCall,
+		PermEditLink,
+		PermPostEditDeleteMessage,
+		PermEditMessage,
+		PermDeleteMessage,
+	}
+
+	admin := ChatAdmin{
+		UserID:      12345,
+		Permissions: allPerms,
+	}
+
+	data, err := json.Marshal(admin)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+
+	var got ChatAdmin
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+
+	if got.UserID != admin.UserID {
+		t.Errorf("UserID = %d, want %d", got.UserID, admin.UserID)
+	}
+	if len(got.Permissions) != len(allPerms) {
+		t.Fatalf("Permissions count = %d, want %d", len(got.Permissions), len(allPerms))
+	}
+	for i, p := range got.Permissions {
+		if p != allPerms[i] {
+			t.Errorf("Permissions[%d] = %q, want %q", i, p, allPerms[i])
+		}
+	}
+}
+
 func TestContactAttachmentPayload_Phone(t *testing.T) {
 	tests := []struct {
 		name    string

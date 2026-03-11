@@ -201,6 +201,14 @@ func (c *Client) parseAPIError(op string, statusCode int, body []byte) *Error {
 	return apiError(op, statusCode, msg)
 }
 
+// ensureTimeout applies the default timeout if the context has no deadline.
+func (c *Client) ensureTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); !ok && c.timeout > 0 {
+		return context.WithTimeout(ctx, c.timeout)
+	}
+	return ctx, func() {}
+}
+
 func isTimeout(err error) bool {
 	var t interface{ Timeout() bool }
 	if errors.As(err, &t) {

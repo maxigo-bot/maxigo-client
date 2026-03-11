@@ -105,6 +105,12 @@ const (
 	PermChangeChatInfo   ChatAdminPermission = "change_chat_info"
 	PermPinMessage       ChatAdminPermission = "pin_message"
 	PermWrite            ChatAdminPermission = "write"
+
+	PermCanCall               ChatAdminPermission = "can_call"
+	PermEditLink              ChatAdminPermission = "edit_link"
+	PermPostEditDeleteMessage ChatAdminPermission = "post_edit_delete_message"
+	PermEditMessage           ChatAdminPermission = "edit_message"
+	PermDeleteMessage         ChatAdminPermission = "delete_message"
 )
 
 // User represents a Max user or bot.

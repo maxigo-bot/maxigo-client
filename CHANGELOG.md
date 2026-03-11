@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.4.0] - 2026-03-11
+
+### Added
+- 5 new `ChatAdminPermission` constants: `PermCanCall`, `PermEditLink`, `PermPostEditDeleteMessage`, `PermEditMessage`, `PermDeleteMessage`
+- Upload convenience methods: `UploadPhotoFromFile`, `UploadPhotoFromURL`, `UploadMediaFromFile`, `UploadMediaFromURL`
+- `ErrFetch` error kind for external URL and local file failures in upload helpers
+- Example tests for godoc documentation
+
+### Security
+- `FromURL` upload methods validate URL scheme (only http/https allowed, prevents SSRF via file:// etc.)
+- `FromURL` upload methods limit download size to 50 MB (`maxFetchSize`)
+- `extractFilename` sanitizes Content-Disposition filenames with `filepath.Base` (prevents path traversal)
+
 ## [v0.3.0] - 2026-02-23
 
 ### Added
