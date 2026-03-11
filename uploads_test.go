@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestGetVideoDetails(t *testing.T) {
@@ -431,5 +432,141 @@ func TestUploadMediaFromURL(t *testing.T) {
 	}
 	if result.Token != "media-from-url" {
 		t.Errorf("Token = %q, want %q", result.Token, "media-from-url")
+	}
+}
+
+func TestUploadMediaFromFileNotFound(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("no HTTP request should be made")
+	})
+
+	_, err := c.UploadMediaFromFile(context.Background(), UploadVideo, "/nonexistent/video.mp4")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrFetch {
+		t.Errorf("Kind = %v, want ErrFetch", e.Kind)
+	}
+}
+
+func TestUploadPhotoFromURLInvalidScheme(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("no HTTP request should be made")
+	})
+
+	_, err := c.UploadPhotoFromURL(context.Background(), "ftp://example.com/photo.jpg")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrNetwork {
+		t.Errorf("Kind = %v, want ErrNetwork", e.Kind)
+	}
+}
+
+func TestUploadMediaFromURLInvalidScheme(t *testing.T) {
+	c, _ := testClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		t.Fatal("no HTTP request should be made")
+	})
+
+	_, err := c.UploadMediaFromURL(context.Background(), UploadFile, "file:///etc/passwd")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrNetwork {
+		t.Errorf("Kind = %v, want ErrNetwork", e.Kind)
+	}
+}
+
+func TestUploadPhotoFromURLWithDeadline(t *testing.T) {
+	var requestCount atomic.Int32
+	c, srv := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		count := requestCount.Add(1)
+		switch {
+		case r.URL.Path == "/external/img.jpg":
+			_, _ = w.Write([]byte("image bytes"))
+		case count == 2:
+			writeJSON(t, w, UploadEndpoint{URL: "http://" + r.Host + "/do-upload"})
+		default:
+			writeJSON(t, w, PhotoTokens{
+				Photos: map[string]PhotoToken{"default": {Token: "deadline-tok"}},
+			})
+		}
+	})
+
+	// Context already has a deadline — ensureTimeout should not override it.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	result, err := c.UploadPhotoFromURL(ctx, srv.URL+"/external/img.jpg")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Photos["default"].Token != "deadline-tok" {
+		t.Errorf("token = %q, want %q", result.Photos["default"].Token, "deadline-tok")
+	}
+}
+
+func TestExtractFilenameEdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		cd          string
+		rawURL      string
+		wantName    string
+	}{
+		{
+			name:     "Content-Disposition with path traversal",
+			cd:       `attachment; filename="../../etc/passwd"`,
+			rawURL:   "http://example.com/file",
+			wantName: "passwd",
+		},
+		{
+			name:     "URL without path",
+			cd:       "",
+			rawURL:   "http://example.com/",
+			wantName: "",
+		},
+		{
+			name:     "URL with filename",
+			cd:       "",
+			rawURL:   "http://example.com/images/photo.jpg",
+			wantName: "photo.jpg",
+		},
+		{
+			name:     "Content-Disposition takes priority over URL",
+			cd:       `attachment; filename="real.png"`,
+			rawURL:   "http://example.com/fake.jpg",
+			wantName: "real.png",
+		},
+		{
+			name:     "empty Content-Disposition filename",
+			cd:       `attachment; filename=""`,
+			rawURL:   "http://example.com/fallback.txt",
+			wantName: "fallback.txt",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{Header: http.Header{}}
+			if tt.cd != "" {
+				resp.Header.Set("Content-Disposition", tt.cd)
+			}
+			got := extractFilename(resp, tt.rawURL)
+			if got != tt.wantName {
+				t.Errorf("extractFilename() = %q, want %q", got, tt.wantName)
+			}
+		})
 	}
 }

@@ -16,6 +16,7 @@ func TestErrorKindString(t *testing.T) {
 		{ErrNetwork, "network"},
 		{ErrTimeout, "timeout"},
 		{ErrDecode, "decode"},
+		{ErrFetch, "fetch"},
 		{ErrorKind(99), "unknown"},
 	}
 	for _, tt := range tests {
@@ -189,6 +190,23 @@ func TestConstructors(t *testing.T) {
 		}
 		if err.Err != underlying {
 			t.Error("Err should be the underlying error")
+		}
+	})
+
+	t.Run("fetchError", func(t *testing.T) {
+		err := fetchError("UploadPhotoFromURL", 404, "not found")
+		if err.Kind != ErrFetch {
+			t.Errorf("Kind = %v, want ErrFetch", err.Kind)
+		}
+		if err.StatusCode != 404 {
+			t.Errorf("StatusCode = %d, want 404", err.StatusCode)
+		}
+		if err.Op != "UploadPhotoFromURL" {
+			t.Errorf("Op = %q, want %q", err.Op, "UploadPhotoFromURL")
+		}
+		want := "UploadPhotoFromURL: fetch error 404: not found"
+		if got := err.Error(); got != want {
+			t.Errorf("Error() = %q, want %q", got, want)
 		}
 	})
 }
