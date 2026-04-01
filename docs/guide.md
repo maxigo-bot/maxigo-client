@@ -97,6 +97,23 @@ client, err := maxigo.New("token",
 
 `WithBaseURL` is useful for testing — point the client at an `httptest.Server`.
 
+### Retry
+
+Enable automatic retry for rate limits (HTTP 429) and attachment processing errors:
+
+```go
+client, err := maxigo.New("token",
+    maxigo.WithRetry(),                                          // default intervals: 500ms, 1s, 2s, 5s
+    maxigo.WithRetry(time.Second, 3*time.Second, 10*time.Second), // custom intervals
+)
+```
+
+Retry is disabled by default. When enabled, it applies to all API calls made through `do()`. The client respects `context.Context` cancellation between retry attempts.
+
+Retryable errors:
+- HTTP 429 (Too Many Requests) — API rate limit
+- API errors containing "not.ready" or "not.processed" — attachment still being processed
+
 ## Messages
 
 ### Sending
@@ -110,6 +127,11 @@ msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
 // To a specific user
 msg, err := client.SendMessageToUser(ctx, userID, &maxigo.NewMessageBody{
     Text: maxigo.Some("Direct message"),
+})
+
+// To phone numbers (business broadcasting)
+msg, err := client.SendMessageToPhones(ctx, []string{"79001234567", "79007654321"}, &maxigo.NewMessageBody{
+    Text: maxigo.Some("Hello from your bot!"),
 })
 
 // With formatting
@@ -295,6 +317,22 @@ result, err := client.LeaveChat(ctx, chatID)
 | `ActionSendAudio`  | Bot is sending audio     |
 | `ActionSendFile`   | Bot is sending a file    |
 | `ActionMarkSeen`   | Mark messages as read    |
+
+## Phone Number Verification
+
+Check which phone numbers are registered in Max before sending messages:
+
+```go
+existing, err := client.CheckPhoneNumbers(ctx, []string{"79001234567", "79007654321"})
+if err != nil {
+    log.Fatal(err)
+}
+for _, phone := range existing {
+    fmt.Println("Registered:", phone)
+}
+```
+
+Phone numbers should be in international format without the "+" prefix (e.g., `"79001234567"`). This corresponds to `GET /notify/exists`.
 
 ## Parsing Attachments
 

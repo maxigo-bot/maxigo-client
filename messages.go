@@ -45,6 +45,25 @@ func (c *Client) SendMessageToUser(ctx context.Context, userID int64, body *NewM
 	return &result.Message, nil
 }
 
+// SendMessageToPhones sends a message to users by their phone numbers.
+// Phone numbers should be in international format without the "+" prefix
+// (e.g., "79001234567"). Only phone numbers registered in Max will receive
+// the message. Use [Client.CheckPhoneNumbers] to verify numbers beforehand.
+// Corresponds to POST /messages with phone_numbers query parameter.
+func (c *Client) SendMessageToPhones(ctx context.Context, phoneNumbers []string, body *NewMessageBody) (*Message, error) {
+	q := make(url.Values)
+	q.Set("phone_numbers", strings.Join(phoneNumbers, ","))
+	if body != nil && body.DisableLinkPreview {
+		q.Set("disable_link_preview", "true")
+	}
+
+	var result sendMessageResult
+	if err := c.do(ctx, "SendMessageToPhones", http.MethodPost, "/messages", q, body, &result); err != nil {
+		return nil, err
+	}
+	return &result.Message, nil
+}
+
 // EditMessage edits an existing message.
 // Corresponds to PUT /messages.
 func (c *Client) EditMessage(ctx context.Context, messageID string, body *NewMessageBody) (*SimpleQueryResult, error) {

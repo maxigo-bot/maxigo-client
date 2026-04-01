@@ -75,6 +75,7 @@ func main() {
 - Full Max Bot API coverage: messages, chats, uploads, webhooks, long polling
 - Type-safe constructors for all button types and attachments
 - `Optional[T]` generics for three-state fields (unset / zero / value)
+- Opt-in automatic retry for rate limits and attachment processing (`WithRetry`)
 - Testable without real API via `WithBaseURL`
 
 ## Type-Safe Constructors
@@ -136,6 +137,8 @@ client.EditBot(ctx, patch)
 
 // Messages
 client.SendMessage(ctx, chatID, body)
+client.SendMessageToUser(ctx, userID, body)
+client.SendMessageToPhones(ctx, phoneNumbers, body)
 client.EditMessage(ctx, messageID, body)
 client.DeleteMessage(ctx, messageID)
 client.AnswerCallback(ctx, callbackID, answer)
@@ -146,6 +149,9 @@ client.GetChats(ctx, opts)
 client.EditChat(ctx, chatID, patch)
 client.GetMembers(ctx, chatID, opts)
 client.SendAction(ctx, chatID, action)
+
+// Phone numbers
+client.CheckPhoneNumbers(ctx, phoneNumbers)
 
 // Uploads
 client.UploadPhoto(ctx, filename, reader)

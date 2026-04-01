@@ -3,6 +3,8 @@ package maxigo
 import (
 	"errors"
 	"fmt"
+	"net/http"
+	"strings"
 )
 
 // ErrEmptyToken is returned when an empty token is passed to New.
@@ -138,4 +140,21 @@ func fetchError(op string, statusCode int, message string) *Error {
 		Message:    message,
 		Op:         op,
 	}
+}
+
+// isRetryable reports whether the error is a retryable API error.
+// An error is retryable if it is an [*Error] with Kind [ErrAPI] and either:
+//   - the HTTP status code is 429 (Too Many Requests), or
+//   - the error message contains "not.ready" or "not.processed"
+//     (returned when an attachment is still being processed by the server).
+func isRetryable(err error) bool {
+	var e *Error
+	if !errors.As(err, &e) || e.Kind != ErrAPI {
+		return false
+	}
+	if e.StatusCode == http.StatusTooManyRequests {
+		return true
+	}
+	return strings.Contains(e.Message, "not.ready") ||
+		strings.Contains(e.Message, "not.processed")
 }

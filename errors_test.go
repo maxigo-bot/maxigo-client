@@ -214,3 +214,32 @@ func TestConstructors(t *testing.T) {
 func TestErrorImplementsErrorInterface(t *testing.T) {
 	var _ error = (*Error)(nil)
 }
+
+func TestIsRetryable(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"429 rate limit", apiError("op", 429, "too many requests"), true},
+		{"not.ready message", apiError("op", 400, "attachment not.ready"), true},
+		{"not.processed message", apiError("op", 400, "file not.processed yet"), true},
+		{"403 forbidden", apiError("op", 403, "forbidden"), false},
+		{"500 server error", apiError("op", 500, "internal"), false},
+		{"400 bad request", apiError("op", 400, "invalid body"), false},
+		{"network error", networkError("op", fmt.Errorf("conn refused")), false},
+		{"timeout error", timeoutError("op", fmt.Errorf("deadline")), false},
+		{"decode error", decodeError("op", fmt.Errorf("bad json")), false},
+		{"nil error", nil, false},
+		{"plain error", fmt.Errorf("something"), false},
+		{"wrapped 429", fmt.Errorf("wrapped: %w", apiError("op", 429, "rate")), true},
+		{"wrapped not.ready", fmt.Errorf("wrapped: %w", apiError("op", 400, "not.ready")), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isRetryable(tt.err); got != tt.want {
+				t.Errorf("isRetryable() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

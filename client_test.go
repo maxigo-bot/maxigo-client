@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -73,6 +74,18 @@ func testClient(t *testing.T, handler http.HandlerFunc) (*Client, *httptest.Serv
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 	c, err := New("test-token", WithBaseURL(srv.URL))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return c, srv
+}
+
+func testClientWithOpts(t *testing.T, handler http.HandlerFunc, opts ...Option) (*Client, *httptest.Server) {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	allOpts := append([]Option{WithBaseURL(srv.URL)}, opts...)
+	c, err := New("test-token", allOpts...)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -435,5 +448,243 @@ func TestDoQueryParams(t *testing.T) {
 	err := c.do(context.Background(), "TestOp", http.MethodGet, "/test", q, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestWithRetryDefaults(t *testing.T) {
+	c, err := New("token", WithRetry())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.retryIntervals) != len(DefaultRetryIntervals) {
+		t.Errorf("len(retryIntervals) = %d, want %d", len(c.retryIntervals), len(DefaultRetryIntervals))
+	}
+}
+
+func TestWithRetryCustomIntervals(t *testing.T) {
+	c, err := New("token", WithRetry(time.Second, 3*time.Second))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.retryIntervals) != 2 {
+		t.Errorf("len(retryIntervals) = %d, want 2", len(c.retryIntervals))
+	}
+}
+
+func TestDoRetryDisabledByDefault(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeError(t, w, http.StatusTooManyRequests, `{"message":"rate limited"}`)
+	})
+
+	_ = c.do(context.Background(), "TestOp", http.MethodGet, "/test", nil, nil, nil)
+	if got := calls.Load(); got != 1 {
+		t.Errorf("calls = %d, want 1 (no retry without WithRetry)", got)
+	}
+}
+
+func TestDoRetry429Success(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := testClientWithOpts(t, func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		if n <= 2 {
+			writeError(t, w, http.StatusTooManyRequests, `{"message":"rate limited"}`)
+			return
+		}
+		writeJSON(t, w, map[string]string{"status": "ok"})
+	}, WithRetry(time.Millisecond, time.Millisecond, time.Millisecond))
+
+	var result map[string]string
+	err := c.do(context.Background(), "TestOp", http.MethodGet, "/test", nil, nil, &result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := calls.Load(); got != 3 {
+		t.Errorf("calls = %d, want 3", got)
+	}
+	if result["status"] != "ok" {
+		t.Errorf("status = %q, want ok", result["status"])
+	}
+}
+
+func TestDoRetryNotReady(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := testClientWithOpts(t, func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		if n == 1 {
+			writeError(t, w, http.StatusBadRequest, `{"message":"attachment not.ready"}`)
+			return
+		}
+		writeJSON(t, w, map[string]string{"status": "ok"})
+	}, WithRetry(time.Millisecond))
+
+	err := c.do(context.Background(), "TestOp", http.MethodPost, "/test", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("calls = %d, want 2", got)
+	}
+}
+
+func TestDoRetryNotProcessed(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := testClientWithOpts(t, func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		if n == 1 {
+			writeError(t, w, http.StatusBadRequest, `{"message":"file not.processed yet"}`)
+			return
+		}
+		writeJSON(t, w, map[string]string{"status": "ok"})
+	}, WithRetry(time.Millisecond))
+
+	err := c.do(context.Background(), "TestOp", http.MethodPost, "/test", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("calls = %d, want 2", got)
+	}
+}
+
+func TestDoRetryNonRetryableError(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := testClientWithOpts(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeError(t, w, http.StatusForbidden, `{"message":"forbidden"}`)
+	}, WithRetry(time.Millisecond, time.Millisecond))
+
+	err := c.do(context.Background(), "TestOp", http.MethodGet, "/test", nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("calls = %d, want 1 (no retry for 403)", got)
+	}
+}
+
+func TestDoRetryExhausted(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := testClientWithOpts(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeError(t, w, http.StatusTooManyRequests, `{"message":"rate limited"}`)
+	}, WithRetry(time.Millisecond, time.Millisecond))
+
+	err := c.do(context.Background(), "TestOp", http.MethodGet, "/test", nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	// 1 initial + 2 retries = 3
+	if got := calls.Load(); got != 3 {
+		t.Errorf("calls = %d, want 3", got)
+	}
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("StatusCode = %d, want 429", e.StatusCode)
+	}
+}
+
+func TestDoRetryContextCancellation(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := testClientWithOpts(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeError(t, w, http.StatusTooManyRequests, `{"message":"rate limited"}`)
+	}, WithRetry(time.Second)) // long interval — context cancel should interrupt
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+	}()
+
+	err := c.do(ctx, "TestOp", http.MethodGet, "/test", nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.Kind != ErrTimeout {
+		t.Errorf("Kind = %v, want ErrTimeout", e.Kind)
+	}
+}
+
+func TestDoRetrySuccessOnFirstAttempt(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := testClientWithOpts(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeJSON(t, w, map[string]string{"status": "ok"})
+	}, WithRetry(time.Millisecond))
+
+	err := c.do(context.Background(), "TestOp", http.MethodGet, "/test", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("calls = %d, want 1", got)
+	}
+}
+
+func TestDoRetryNonRetryableDuringRetry(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := testClientWithOpts(t, func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		if n == 1 {
+			writeError(t, w, http.StatusTooManyRequests, `{"message":"rate limited"}`)
+			return
+		}
+		writeError(t, w, http.StatusForbidden, `{"message":"forbidden"}`)
+	}, WithRetry(time.Millisecond, time.Millisecond))
+
+	err := c.do(context.Background(), "TestOp", http.MethodGet, "/test", nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("calls = %d, want 2", got)
+	}
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if e.StatusCode != http.StatusForbidden {
+		t.Errorf("StatusCode = %d, want 403", e.StatusCode)
+	}
+}
+
+func TestDoRetryWithBody(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := testClientWithOpts(t, func(w http.ResponseWriter, r *http.Request) {
+		// Verify body is present and correct on every attempt.
+		var body map[string]string
+		readJSON(t, r, &body)
+		if body["text"] != "hello" {
+			t.Errorf("attempt %d: text = %q, want hello", calls.Load()+1, body["text"])
+		}
+
+		n := calls.Add(1)
+		if n == 1 {
+			writeError(t, w, http.StatusTooManyRequests, `{"message":"rate limited"}`)
+			return
+		}
+		writeJSON(t, w, map[string]string{"status": "ok"})
+	}, WithRetry(time.Millisecond))
+
+	reqBody := map[string]string{"text": "hello"}
+	var result map[string]string
+	err := c.do(context.Background(), "TestOp", http.MethodPost, "/test", nil, reqBody, &result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("calls = %d, want 2", got)
+	}
+	if result["status"] != "ok" {
+		t.Errorf("status = %q, want ok", result["status"])
 	}
 }

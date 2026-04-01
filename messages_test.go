@@ -67,6 +67,109 @@ func TestSendMessageToUser(t *testing.T) {
 	}
 }
 
+func TestSendMessageToPhones(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				t.Errorf("method = %q, want POST", r.Method)
+			}
+			if r.URL.Path != "/messages" {
+				t.Errorf("path = %q, want /messages", r.URL.Path)
+			}
+			phones := r.URL.Query().Get("phone_numbers")
+			if phones != "79001234567,79007654321" {
+				t.Errorf("phone_numbers = %q, want %q", phones, "79001234567,79007654321")
+			}
+
+			var body NewMessageBody
+			readJSON(t, r, &body)
+			if !body.Text.Set || body.Text.Value != "Hello via phone!" {
+				t.Errorf("text = %v, want %q", body.Text, "Hello via phone!")
+			}
+
+			mid := "msg-phone-1"
+			text := "Hello via phone!"
+			writeJSON(t, w, sendMessageResult{
+				Message: Message{
+					Timestamp: 1234567890,
+					Body: MessageBody{
+						MID:  mid,
+						Text: &text,
+					},
+				},
+			})
+		})
+
+		msg, err := c.SendMessageToPhones(context.Background(),
+			[]string{"79001234567", "79007654321"},
+			&NewMessageBody{Text: Some("Hello via phone!")},
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if msg.Body.MID != "msg-phone-1" {
+			t.Errorf("MID = %q, want %q", msg.Body.MID, "msg-phone-1")
+		}
+	})
+
+	t.Run("single phone number", func(t *testing.T) {
+		c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			phones := r.URL.Query().Get("phone_numbers")
+			if phones != "79001234567" {
+				t.Errorf("phone_numbers = %q, want single number", phones)
+			}
+			writeJSON(t, w, sendMessageResult{
+				Message: Message{Timestamp: 1},
+			})
+		})
+
+		_, err := c.SendMessageToPhones(context.Background(),
+			[]string{"79001234567"},
+			&NewMessageBody{Text: Some("hi")},
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("with disable link preview", func(t *testing.T) {
+		c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("disable_link_preview") != "true" {
+				t.Errorf("disable_link_preview missing")
+			}
+			writeJSON(t, w, sendMessageResult{
+				Message: Message{Timestamp: 1},
+			})
+		})
+
+		_, err := c.SendMessageToPhones(context.Background(),
+			[]string{"79001234567"},
+			&NewMessageBody{Text: Some("https://example.com"), DisableLinkPreview: true},
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("API error", func(t *testing.T) {
+		c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+			writeError(t, w, http.StatusBadRequest, `{"code":"bad.request","message":"invalid phone number"}`)
+		})
+
+		_, err := c.SendMessageToPhones(context.Background(),
+			[]string{"invalid"},
+			&NewMessageBody{Text: Some("hi")},
+		)
+		var e *Error
+		if !errors.As(err, &e) {
+			t.Fatalf("expected *Error, got %T", err)
+		}
+		if e.Op != "SendMessageToPhones" {
+			t.Errorf("Op = %q, want SendMessageToPhones", e.Op)
+		}
+	})
+}
+
 func TestSendMessageDisableLinkPreview(t *testing.T) {
 	c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("disable_link_preview") != "true" {

@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.5.0] - 2026-04-01
+
+### Added
+- `WithRetry()` option — opt-in automatic retry for retryable API errors (HTTP 429 rate limit and attachment processing errors). Configurable intervals, respects context cancellation. Default intervals: 500ms, 1s, 2s, 5s
+- `DefaultRetryIntervals` — exported default retry intervals for `WithRetry`
+- `CheckPhoneNumbers(ctx, phoneNumbers)` — check which phone numbers are registered in Max (`GET /notify/exists`)
+- `SendMessageToPhones(ctx, phoneNumbers, body)` — send messages to users by phone numbers (`POST /messages` with `phone_numbers` query parameter)
+
 ## [v0.4.0] - 2026-03-11
 
 ### Added

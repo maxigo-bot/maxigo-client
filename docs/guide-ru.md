@@ -97,6 +97,23 @@ client, err := maxigo.New("token",
 
 `WithBaseURL` полезен для тестирования — можно направить клиент на `httptest.Server`.
 
+### Автоматический retry
+
+Включает автоматический retry при rate limit (HTTP 429) и ошибках обработки вложений:
+
+```go
+client, err := maxigo.New("token",
+    maxigo.WithRetry(),                                          // интервалы по умолчанию: 500мс, 1с, 2с, 5с
+    maxigo.WithRetry(time.Second, 3*time.Second, 10*time.Second), // свои интервалы
+)
+```
+
+Retry выключен по умолчанию. При включении применяется ко всем API-вызовам. Между попытками проверяется `context.Context` на отмену.
+
+Ошибки, при которых происходит retry:
+- HTTP 429 (Too Many Requests) — rate limit API
+- API-ошибки с текстом "not.ready" или "not.processed" — вложение ещё обрабатывается
+
 ## Работа с сообщениями
 
 ### Отправка
@@ -110,6 +127,11 @@ msg, err := client.SendMessage(ctx, chatID, &maxigo.NewMessageBody{
 // Конкретному пользователю
 msg, err := client.SendMessageToUser(ctx, userID, &maxigo.NewMessageBody{
     Text: maxigo.Some("Личное сообщение"),
+})
+
+// По номерам телефонов (бизнес-рассылки)
+msg, err := client.SendMessageToPhones(ctx, []string{"79001234567", "79007654321"}, &maxigo.NewMessageBody{
+    Text: maxigo.Some("Привет от бота!"),
 })
 
 // С форматированием
@@ -242,6 +264,22 @@ pinned, err := client.GetPinnedMessage(ctx, chatID)
 // Покинуть чат
 result, err := client.LeaveChat(ctx, chatID)
 ```
+
+## Проверка номеров телефонов
+
+Проверка, зарегистрированы ли номера телефонов в Max, перед отправкой сообщений:
+
+```go
+existing, err := client.CheckPhoneNumbers(ctx, []string{"79001234567", "79007654321"})
+if err != nil {
+    log.Fatal(err)
+}
+for _, phone := range existing {
+    fmt.Println("Зарегистрирован:", phone)
+}
+```
+
+Номера телефонов должны быть в международном формате без префикса "+" (например, `"79001234567"`). Соответствует `GET /notify/exists`.
 
 ## Парсинг вложений
 

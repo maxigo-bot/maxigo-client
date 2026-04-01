@@ -973,3 +973,8 @@ type apiErrorResponse struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
+
+// checkPhoneNumbersResult is the response from GET /notify/exists.
+type checkPhoneNumbersResult struct {
+	ExistingPhoneNumbers []string `json:"existing_phone_numbers"`
+}

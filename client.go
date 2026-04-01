@@ -24,10 +24,11 @@ const (
 //
 // All methods are safe for concurrent use.
 type Client struct {
-	httpClient *http.Client
-	baseURL    string
-	token      string
-	timeout    time.Duration
+	httpClient     *http.Client
+	baseURL        string
+	token          string
+	timeout        time.Duration
+	retryIntervals []time.Duration // nil means retry disabled (default)
 }
 
 // New creates a new Max Bot API client with the given token.
@@ -59,6 +60,8 @@ func New(token string, opts ...Option) (*Client, error) {
 // do performs an HTTP request and decodes the JSON response into result.
 // If result is nil, the response body is discarded.
 // If the context has no deadline, the client's default timeout is applied.
+// When retry is enabled via [WithRetry], retryable errors are automatically
+// retried according to the configured intervals.
 func (c *Client) do(ctx context.Context, op, method, path string, query url.Values, body any, result any) error {
 	if _, ok := ctx.Deadline(); !ok && c.timeout > 0 {
 		var cancel context.CancelFunc
@@ -71,54 +74,75 @@ func (c *Client) do(ctx context.Context, op, method, path string, query url.Valu
 		return networkError(op, err)
 	}
 
-	var bodyReader io.Reader
+	// Marshal body once — reused across retries via bytes.NewReader.
+	var bodyBytes []byte
 	if body != nil {
-		data, err := json.Marshal(body)
+		bodyBytes, err = json.Marshal(body)
 		if err != nil {
 			return decodeError(op, fmt.Errorf("marshal request: %w", err))
 		}
-		bodyReader = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, u, bodyReader)
-	if err != nil {
-		return networkError(op, fmt.Errorf("create request: %w", err))
+	doOnce := func() error {
+		var bodyReader io.Reader
+		if bodyBytes != nil {
+			bodyReader = bytes.NewReader(bodyBytes)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, u, bodyReader)
+		if err != nil {
+			return networkError(op, fmt.Errorf("create request: %w", err))
+		}
+
+		req.Header.Set("Authorization", c.token)
+		if bodyBytes != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			if ctx.Err() != nil {
+				return timeoutError(op, ctx.Err())
+			}
+			if isTimeout(err) {
+				return timeoutError(op, err)
+			}
+			return networkError(op, err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return networkError(op, fmt.Errorf("read response: %w", err))
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return c.parseAPIError(op, resp.StatusCode, respBody)
+		}
+
+		if result != nil {
+			if err := json.Unmarshal(respBody, result); err != nil {
+				return decodeError(op, fmt.Errorf("unmarshal response: %w", err))
+			}
+		}
+
+		return nil
 	}
 
-	req.Header.Set("Authorization", c.token)
-
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if c.retryIntervals == nil {
+		return doOnce()
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		if ctx.Err() != nil {
+	err = doOnce()
+	for i := 0; err != nil && i < len(c.retryIntervals) && isRetryable(err); i++ {
+		select {
+		case <-ctx.Done():
 			return timeoutError(op, ctx.Err())
+		case <-time.After(c.retryIntervals[i]):
 		}
-		if isTimeout(err) {
-			return timeoutError(op, err)
-		}
-		return networkError(op, err)
+		err = doOnce()
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return networkError(op, fmt.Errorf("read response: %w", err))
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return c.parseAPIError(op, resp.StatusCode, respBody)
-	}
-
-	if result != nil {
-		if err := json.Unmarshal(respBody, result); err != nil {
-			return decodeError(op, fmt.Errorf("unmarshal response: %w", err))
-		}
-	}
-
-	return nil
+	return err
 }
 
 // doUpload performs a multipart file upload to the given URL.
